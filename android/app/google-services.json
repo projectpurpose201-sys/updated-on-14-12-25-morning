@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "974276846085",
+    "project_id": "vaniyambadi-rides",
+    "storage_bucket": "vaniyambadi-rides.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:974276846085:android:df543a2cefb508075c726c",
+        "android_client_info": {
+          "package_name": "com.vaniyambadi.ride"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDUkUyyf7uYLfInhqLABC6qkI_Hr9MBPtg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
