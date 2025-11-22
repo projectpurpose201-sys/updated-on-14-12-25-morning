@@ -6,261 +6,372 @@
 
   <style>
     html, body, #map { height: 100%; margin: 0; padding: 0; }
+    .leaflet-container { touch-action: pan-y pinch-zoom; -webkit-tap-highlight-color: transparent; }
 
-    .leaflet-container { 
-      touch-action: pan-y pinch-zoom; 
-      -webkit-tap-highlight-color: transparent; 
+    /* Center marker overlay */
+    #centerMarker {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      height: 38px;
+      width: 38px;
+      margin-left: -19px;
+      margin-top: -38px;
+      background-image: url('https://cdn-icons-png.flaticon.com/512/535/535239.png');
+      background-size: cover;
+      z-index: 999;
+      pointer-events: none;
     }
 
-    /* Disable OpenStreetMap link click */
-    .leaflet-control-attribution a {
-      pointer-events: none !important;
-      text-decoration: none !important;
-      color: #999 !important;
-    }
-
-    /* text labels for area names */
     .polygon-label {
       font-weight: bold;
       color: #1b5e20;
       text-shadow: 1px 1px 2px white;
+      font-size: 14px;
+    }
+
+    .leaflet-control-attribution a {
+      pointer-events: none !important;
+      cursor: default !important;
     }
   </style>
 </head>
 
 <body>
   <div id="map"></div>
+  <div id="centerMarker"></div>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
   <script>
+    /* ============================
+       TILE + MAP INIT
+    ============================= */
+    const tileUrl =
+      "https://api.maptiler.com/maps/streets-v2/256/{z}/{x}/{y}.png?key=vt8j60co865zsOqac3J6";
 
-    const tileUrl = "https://api.maptiler.com/maps/streets-v2/256/{z}/{x}/{y}.png?key=vt8j60co865zsOqac3J6";
+    const DEFAULT_CENTER = [12.6820, 78.6201];
+    const DEFAULT_ZOOM = 15;
 
-    // MAP INIT
-    const map = L.map("map", { zoomControl: true }).setView([12.6820, 78.6201], 14);
+    const map = L.map("map", {
+      zoomControl: true,
+      minZoom: 13,
+      maxZoom: 18,
+    }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
 
     L.tileLayer(tileUrl, {
       maxZoom: 19,
       tileSize: 512,
       zoomOffset: -1,
-      attribution: "&copy; <a>OpenStreetMap</a> contributors"
     }).addTo(map);
 
+    map.attributionControl.setPrefix("");
 
-    /* ----------------------------------------------
-        CUSTOM ICONS
-    ----------------------------------------------*/
-    const pickupIcon = L.icon({
-      iconUrl: "https://cdn-icons-png.flaticon.com/512/684/684908.png",
-      iconSize: [42, 42]
-    });
-
-    const dropIcon = L.icon({
-      iconUrl: "https://cdn-icons-png.flaticon.com/512/854/854894.png",
-      iconSize: [45, 45]
-    });
-
+    /* ============================
+       ICONS
+    ============================= */
     const userIcon = L.icon({
       iconUrl: "https://cdn-icons-png.flaticon.com/512/535/535239.png",
-      iconSize: [38, 38]
+      iconSize: [36, 36],
     });
 
+    const pickupIcon = L.icon({
+      iconUrl: "https://cdn-icons-png.flaticon.com/512/684/684908.png",
+      iconSize: [40, 40],
+    });
 
-    /* ----------------------------------------------
-        MARKERS
-    ----------------------------------------------*/
+    /* ============================
+       STATE
+    ============================= */
+    let userMarker = null;
     let pickupMarker = null;
     let dropMarker = null;
     let pendingMarker = null;
-    let userMarker = null;
     let routeLine = null;
 
+    let subareaPolygons = [];
+    let allowedBounds = null;
 
-    /* SHOW USER LOCATION */
-    function setUserLocation(lat, lng) {
+    let firstLocationSet = false;
+    let pendingUserLocation = null;
+    let polygonsLoaded = false;
+    let pendingCenterOnUser = false;
+
+    /* ============================
+       POINT-IN-POLYGON
+    ============================= */
+    function pointInPolygon(point, vs) {
+      const x = point[1], y = point[0];
+      let inside = false;
+      for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+        const xi = vs[i][1], yi = vs[i][0];
+        const xj = vs[j][1], yj = vs[j][0];
+        const intersect = ((yi > y) !== (yj > y)) &&
+          (x < (xj - xi) * (y - yi) / ((yj - yi) + 0.0000001) + xi);
+        if (intersect) inside = !inside;
+      }
+      return inside;
+    }
+
+    function polygonContainsLatLng(poly, latlng) {
+      const ring = poly.getLatLngs()[0];
+      const vs = ring.map(p => [p.lat, p.lng]);
+      return pointInPolygon([latlng.lat, latlng.lng], vs);
+    }
+
+    function isInsideAnyPolygon(latlng) {
+      return subareaPolygons.some(poly => polygonContainsLatLng(poly, latlng));
+    }
+
+    /* ============================
+       USER LOCATION HANDLING
+    ============================= */
+    function setUserLocation(lat, lng, centerMap = true, zoom = 17) {
+      // always show marker immediately
       if (!userMarker) {
         userMarker = L.marker([lat, lng], { icon: userIcon }).addTo(map);
       } else {
         userMarker.setLatLng([lat, lng]);
       }
+
+      // Only center camera if polygons exist
+      if (centerMap && polygonsLoaded) {
+        map.setView([lat, lng], zoom);
+        firstLocationSet = true;
+        pendingCenterOnUser = false;
+      } else if (centerMap && !polygonsLoaded) {
+        pendingUserLocation = { lat, lng, zoom };
+        pendingCenterOnUser = true;
+      }
     }
 
+    /* ============================
+       ROUTE DRAW
+    ============================= */
+    function drawRoute(coords) {
+      if (routeLine) map.removeLayer(routeLine);
+      if (!coords || coords.length < 2) return;
 
-    /* Core update function used by index.tsx */
-    function updateMarkers(payload) {
-      const { pickup, drop, pendingDrop, routeCoords, cameraCenter, cameraZoom } = payload;
+      const latlngs = coords.map(p => [p.latitude, p.longitude]);
+      routeLine = L.polyline(latlngs, { color: "blue", weight: 5 }).addTo(map);
+    }
 
-      // Pickup
-      if (pickup) {
-        if (!pickupMarker)
-          pickupMarker = L.marker([pickup.latitude, pickup.longitude], { icon: pickupIcon }).addTo(map);
-        else
-          pickupMarker.setLatLng([pickup.latitude, pickup.longitude]);
-      } else if (pickupMarker) {
-        map.removeLayer(pickupMarker);
-        pickupMarker = null;
+    /* ============================
+       LOAD SUBAREAS
+    ============================= */
+    function loadSubareas(json) {
+      subareaPolygons.forEach(p => map.removeLayer(p));
+      subareaPolygons = [];
+      allowedBounds = null;
+
+      Object.keys(json || {}).forEach(name => {
+        const pts = json[name].map(p => [p.lat, p.lng]);
+        if (pts.length < 3) return;
+
+        const poly = L.polygon(pts, {
+          color: "#2e7d32",
+          fillColor: "#81c784",
+          fillOpacity: 0.25
+        }).addTo(map);
+
+        subareaPolygons.push(poly);
+
+        if (!allowedBounds) allowedBounds = poly.getBounds();
+        else allowedBounds.extend(poly.getBounds());
+
+        const center = poly.getBounds().getCenter();
+        L.marker(center, { icon: L.divIcon({
+          html: `<div class="polygon-label">${name}</div>`,
+          className: ""
+        })}).addTo(map);
+      });
+
+      polygonsLoaded = true;
+
+      if (allowedBounds) {
+        map.setMaxBounds(allowedBounds.pad(0.02));
       }
 
-      // Drop
-      if (drop) {
-        if (!dropMarker)
-          dropMarker = L.marker([drop.latitude, drop.longitude], { icon: dropIcon }).addTo(map);
-        else
-          dropMarker.setLatLng([drop.latitude, drop.longitude]);
+      // If user location came earlier & told to center — now apply
+      if (!firstLocationSet && pendingCenterOnUser && pendingUserLocation) {
+        map.setView(
+          [pendingUserLocation.lat, pendingUserLocation.lng],
+          pendingUserLocation.zoom || 17
+        );
+        firstLocationSet = true;
+        pendingUserLocation = null;
+        pendingCenterOnUser = false;
+        return;
+      }
+
+      // If no user location yet → fit polygon
+      if (!firstLocationSet && allowedBounds) {
+        map.fitBounds(allowedBounds.pad(0.02));
+      }
+    }
+
+    /* ============================
+       UPDATE MARKERS
+    ============================= */
+    function updateMarkers(payload) {
+      const { pickup, drop, pendingDrop, routeCoords } = payload;
+
+      if (pickup && (pickup.latitude || pickup.lat)) {
+        const lat = pickup.latitude || pickup.lat;
+        const lng = pickup.longitude || pickup.lng;
+        if (!pickupMarker) pickupMarker = L.marker([lat, lng], { icon: pickupIcon }).addTo(map);
+        else pickupMarker.setLatLng([lat, lng]);
+      }
+
+      if (drop && (drop.latitude || drop.lat)) {
+        const lat = drop.latitude || drop.lat;
+        const lng = drop.longitude || drop.lng;
+        if (!dropMarker) dropMarker = L.marker([lat, lng]).addTo(map);
+        else dropMarker.setLatLng([lat, lng]);
       } else if (dropMarker) {
         map.removeLayer(dropMarker);
         dropMarker = null;
       }
 
-      // Pending Marker
-      if (pendingDrop) {
-        if (!pendingMarker)
-          pendingMarker = L.marker([pendingDrop.latitude, pendingDrop.longitude]).addTo(map);
-        else
-          pendingMarker.setLatLng([pendingDrop.latitude, pendingDrop.longitude]);
+      if (pendingDrop && (pendingDrop.latitude || pendingDrop.lat)) {
+        const lat = pendingDrop.latitude || pendingDrop.lat;
+        const lng = pendingDrop.longitude || pendingDrop.lng;
+        if (!pendingMarker) pendingMarker = L.marker([lat, lng], { opacity: 0.9 }).addTo(map);
+        else pendingMarker.setLatLng([lat, lng]);
       } else if (pendingMarker) {
         map.removeLayer(pendingMarker);
         pendingMarker = null;
       }
 
-      // Route
-      if (routeLine) {
-        map.removeLayer(routeLine);
-        routeLine = null;
-      }
-      if (Array.isArray(routeCoords) && routeCoords.length > 1) {
-        const pts = routeCoords.map(p => [p.latitude, p.longitude]);
-        routeLine = L.polyline(pts, { color: "blue", weight: 5 }).addTo(map);
-      }
-
-      // Camera
-      if (cameraCenter) {
-        if (typeof cameraZoom === "number")
-          map.setView([cameraCenter.lat, cameraCenter.lng], cameraZoom);
-        else
-          map.setView([cameraCenter.lat, cameraCenter.lng]);
-      }
+      if (routeCoords) drawRoute(routeCoords);
     }
 
+    /* ============================
+       SNAP TO NEAREST POLYGON
+    ============================= */
+    function haversine(a, b) {
+      const R = 6371000;
+      const toRad = d => d * Math.PI / 180;
+      const dLat = toRad(b.lat - a.lat);
+      const dLon = toRad(b.lng - a.lng);
+      const lat1 = toRad(a.lat);
+      const lat2 = toRad(b.lat);
+      const A = Math.sin(dLat/2)**2 +
+        Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon/2)**2;
+      return 2 * R * Math.atan2(Math.sqrt(A), Math.sqrt(1-A));
+    }
 
-    /* ----------------------------------------------
-        SUBAREA POLYGONS
-    ----------------------------------------------*/
-    const subAreas = {
-      "Sultanpet": [
-        [12.6814, 78.6201],
-        [12.6820, 78.6210],
-        [12.6808, 78.6216]
-      ],
-      "Nehru Nagar": [
-        [12.6870, 78.6250],
-        [12.6878, 78.6262],
-        [12.6865, 78.6268]
-      ]
-    };
+    function nearestPolygonCenter(latlng) {
+      let best = null;
+      let bestDist = Infinity;
+      subareaPolygons.forEach(poly => {
+        const c = poly.getBounds().getCenter();
+        const d = haversine(latlng, {lat: c.lat, lng: c.lng});
+        if (d < bestDist) { bestDist = d; best = c; }
+      });
+      return best;
+    }
 
-    Object.entries(subAreas).forEach(([name, coords]) => {
-      const poly = L.polygon(coords, {
-        color: "#2e7d32",
-        fillColor: "#81c784",
-        fillOpacity: 0.25
-      }).addTo(map);
+    /* ============================
+       CONFIRM DROP LOGIC
+    ============================= */
+    function confirmDrop() {
+      const c = map.getCenter();
 
-      const center = poly.getBounds().getCenter();
-
-      L.marker(center, {
-        icon: L.divIcon({
-          html: `<div class="polygon-label">${name}</div>`,
-          className: "",
-          iconSize: [100, 20]
-        })
-      }).addTo(map);
-    });
-
-
-    /* ----------------------------------------------
-        BLOCKED ZONES (NO GO AREAS)
-    ----------------------------------------------*/
-    const blockedZones = [
-      [
-        [12.6845, 78.6188],
-        [12.6851, 78.6197],
-        [12.6839, 78.6204]
-      ]
-    ];
-
-    blockedZones.forEach(coords => {
-      L.polygon(coords, {
-        color: "red",
-        fillColor: "red",
-        fillOpacity: 0.35
-      }).addTo(map);
-    });
-
-
-    /* ----------------------------------------------
-        MAP EVENTS TO RN
-    ----------------------------------------------*/
-    let regionTimer = null;
-    function notifyRegionChange() {
-      if (regionTimer) clearTimeout(regionTimer);
-      regionTimer = setTimeout(() => {
-        const c = map.getCenter();
+      if (isInsideAnyPolygon(c)) {
         window.ReactNativeWebView.postMessage(JSON.stringify({
-          type: "regionChange",
+          type: "confirmDrop",
           lat: c.lat,
-          lng: c.lng
+          lng: c.lng,
+          snapped: false
         }));
-      }, 250);
+        return;
+      }
+
+      // Center outside → snap to nearest
+      const snap = nearestPolygonCenter(c);
+      if (!snap) return;
+
+      map.flyTo([snap.lat, snap.lng], map.getZoom());
+
+      setTimeout(() => {
+        window.ReactNativeWebView.postMessage(JSON.stringify({
+          type: "confirmDrop",
+          lat: snap.lat,
+          lng: snap.lng,
+          snapped: true
+        }));
+      }, 500);
     }
-    map.on("moveend", notifyRegionChange);
 
-    map.on("click", e => {
-      window.ReactNativeWebView.postMessage(JSON.stringify({
-        type: "press",
-        lat: e.latlng.lat,
-        lng: e.latlng.lng
-      }));
-    });
+    /* RN calls this via postMessage({type:"confirm"}) */
+    function handleConfirm() {
+      confirmDrop();
+    }
 
-    map.on("contextmenu", e => {
-      window.ReactNativeWebView.postMessage(JSON.stringify({
-        type: "longPress",
-        lat: e.latlng.lat,
-        lng: e.latlng.lng
-      }));
-    });
+    /* ============================
+       HANDLE MESSAGES FROM RN
+    ============================= */
+    function handleMessage(event) {
+      let raw = event.data || event;
 
-
-    /* RECEIVE MESSAGES FROM RN */
-    window.ReactNativeWebView.onMessage = function (event) {
       try {
-        const data = JSON.parse(event.data);
+        const msg = JSON.parse(raw);
 
-        if (data.type === "update") updateMarkers(data);
+        if (msg.type === "loadSubareas") return loadSubareas(msg.data);
+        if (msg.type === "confirm") return handleConfirm();
+        if (msg.type === "update") {
+          // cameraCenter from RN
+          if (msg.cameraCenter) {
+            let lat, lng;
 
-        if (data.type === "userLocation") setUserLocation(data.lat, data.lng);
+            if (Array.isArray(msg.cameraCenter)) {
+              const maybeLng = msg.cameraCenter[0];
+              const maybeLat = msg.cameraCenter[1];
+              lat = maybeLat; lng = maybeLng;
+            } else {
+              lat = msg.cameraCenter.lat;
+              lng = msg.cameraCenter.lng;
+            }
 
-        if (data.type === "setCamera") {
-          const c = data.center;
-          if (!c) return;
-          typeof data.zoom === "number"
-            ? map.setView([c.lat, c.lng], data.zoom)
-            : map.setView([c.lat, c.lng]);
+            if (!isNaN(lat) && !isNaN(lng)) {
+              map.setView([lat, lng], msg.cameraZoom || map.getZoom());
+            }
+          }
+
+          updateMarkers(msg);
+          return;
         }
 
-        if (data.type === "fitBounds" && data.bounds) {
-          map.fitBounds([
-            [data.bounds.south, data.bounds.west],
-            [data.bounds.north, data.bounds.east]
-          ]);
+        if (msg.type === "userLocation") {
+          const lat = msg.lat ?? msg.latitude;
+          const lng = msg.lng ?? msg.longitude;
+          if (typeof lat === "number" && typeof lng === "number") {
+            setUserLocation(lat, lng, msg.center !== false, msg.zoom || 17);
+          }
+          return;
         }
 
-      } catch (err) {}
-    };
+        if (msg.type === "setCamera" && msg.center) {
+          map.setView([msg.center.lat, msg.center.lng], msg.zoom || map.getZoom());
+          return;
+        }
 
-    // Ready event
-    window.ReactNativeWebView.postMessage(JSON.stringify({ type: "mapReady" }));
+      } catch (e) {
+        console.warn("Message parse error", raw, e);
+      }
+    }
+
+    document.addEventListener("message", handleMessage);
+    window.addEventListener("message", handleMessage);
+
+    if (window.ReactNativeWebView)
+      window.ReactNativeWebView.onMessage = handleMessage;
+
+    /* ============================
+       READY SIGNAL
+    ============================= */
+    window.ReactNativeWebView?.postMessage(JSON.stringify({type: "mapReady"}));
 
   </script>
 </body>

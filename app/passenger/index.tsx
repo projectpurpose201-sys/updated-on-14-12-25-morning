@@ -32,6 +32,7 @@ import { supabase } from "../../utils/supabaseClient";
 import { StatusBar as RNStatusBar } from "react-native";
 import { polygons, getAreaName, getPolygonCenter } from "../../utils/geoUtils";
 import { getNearestStreet, StreetEntry } from "../../utils/locationUtils";
+import { ToastAndroid } from "react-native";
 
 const SCREEN_WIDTH = Dimensions.get("window").width;
 
@@ -127,6 +128,7 @@ export default function PassengerMainScreen() {
   // --- Get current location ---
   useEffect(() => {
     getCurrentLocation();
+    
     fetchAds();
     fetchSubareas();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -138,6 +140,7 @@ export default function PassengerMainScreen() {
       if (status !== "granted") {
         Alert.alert("Permission Denied", "Location permission is required.");
         return;
+        
       }
 
       const loc = await Location.getCurrentPositionAsync({});
@@ -151,12 +154,35 @@ export default function PassengerMainScreen() {
 
       const streetName = nearestStreet?.name ?? "Unknown Street";
 
-      setPickup({
+            setPickup({
         latitude,
         longitude,
         address: `${areaName} | ${streetName} Vaniyambadi, 635751`,
       });
 
+      setMapRegion({
+        latitude,
+        longitude,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+      });
+
+      // set camera to current location
+      setCameraCenter([longitude, latitude]);
+      setCameraZoom(15);
+
+      // --- DEBUG: log and send userLocation to webview to force passenger marker + zoom ---
+      console.log("[RN] sending userLocation ->", { latitude, longitude, zoom: 17 });
+      webRef.current?.postMessage(JSON.stringify({
+        type: "userLocation",
+        lat: latitude,
+        lng: longitude,
+        center: true,
+        zoom: 17
+      }));
+
+
+useEffect
       setMapRegion({
         latitude,
         longitude,
@@ -202,26 +228,40 @@ export default function PassengerMainScreen() {
     }
   };
 
-  const handleSelectSubarea = (subareaName: string) => {
-    setDropSubarea(subareaName);
+const handleSelectSubarea = (subareaName: string) => {
+  console.log("[RN] handleSelectSubarea:", subareaName);
+  setDropSubarea(subareaName);
 
-    const polygon = (polygons as Record<string, { lat: number; lng: number }[]>)[subareaName];
-    if (!polygon) return;
+  const polygon = (polygons as Record<string, { lat: number; lng: number }[]>)[subareaName];
+  if (!polygon) {
+    console.warn("[RN] subarea polygon not found:", subareaName);
+    return;
+  }
 
-    const center = getPolygonCenter(polygon);
+  const center = getPolygonCenter(polygon);
+  console.log("[RN] subarea center:", center);
 
-    setManualMapMove(true);
+  // Update pending drop & center marker (for Confirm Drop)
+  setPendingDrop({ latitude: center.lat, longitude: center.lng });
+  setPendingRegion({
+    latitude: center.lat,
+    longitude: center.lng,
+    latitudeDelta: 0.01,
+    longitudeDelta: 0.01,
+  });
 
-    // Move camera by updating cameraCenter
-    setCameraCenter([center.lng, center.lat]);
-    setCameraZoom(16);
+  // Update camera state (React Native side)
+  setCameraCenter([center.lng, center.lat]);
+  setCameraZoom(16);
 
-    // Prepare pending drop marker
-    setPendingDrop({ latitude: center.lat, longitude: center.lng });
+  // Move Leaflet map in WebView
+  const msg = { type: "setCamera", center: { lat: center.lat, lng: center.lng }, zoom: 16 };
+  console.log("[RN -> WEBVIEW] setCamera:", msg);
+  webRef.current?.postMessage(JSON.stringify(msg));
+};
 
-    // send camera update to webview (post below in useEffect will trigger update)
-    setTimeout(() => setManualMapMove(false), 1000);
-  };
+
+
 
   // --- Fetch Ads / Subareas ---
   const fetchAds = async () => {
@@ -274,39 +314,41 @@ export default function PassengerMainScreen() {
   const [pendingDrop, setPendingDrop] = useState<{ latitude: number; longitude: number } | null>(null);
 
   const handleConfirmDrop = async () => {
-    if (!pendingRegion) return;
+  if (!pendingRegion) {
+    console.warn("[RN] handleConfirmDrop: no pendingRegion");
+    return;
+  }
 
-    const { latitude, longitude } = pendingRegion;
+  const { latitude, longitude } = pendingRegion;
+  console.log("[RN] handleConfirmDrop using pendingRegion:", pendingRegion);
 
-    try {
-      const res = await fetch(
-        `https://us1.locationiq.com/v1/reverse.php?key=${LOCATIONIQ_KEY}&lat=${latitude}&lon=${longitude}&format=json`
-      );
-      const data = (await res.json()) as { display_name?: string };
-      const address = data.display_name || "";
+  try {
+    const res = await fetch(
+      `https://us1.locationiq.com/v1/reverse.php?key=${LOCATIONIQ_KEY}&lat=${latitude}&lon=${longitude}&format=json`
+    );
+    const data = (await res.json()) as { display_name?: string };
+    const address = data.display_name || "";
 
-      const areaName = getAreaName({ lat: latitude, lng: longitude }) || "Unknown Area";
+    const areaName = getAreaName({ lat: latitude, lng: longitude }) || "Unknown Area";
 
-      setDrop({
-        latitude,
-        longitude,
-        address: `${address}, ${areaName}`,
-      });
-      setDropSubarea(areaName);
-      setConfirmed(true);
+    setDrop({
+      latitude,
+      longitude,
+      address: `${address}, ${areaName}`,
+    });
+    setDropSubarea(areaName);
+    setConfirmed(true);
 
-      setMapRegion({
-        ...mapRegion,
-        latitude,
-        longitude,
-      });
+    console.log("[RN] confirmed drop - fetching route now");
+    await fetchRoute({ latitude, longitude });
+    console.log("[RN] fetchRoute done - routeCoords length:", routeCoords?.length || "unknown (will log when updated)");
+  } catch (e) {
+    console.error("[RN] Confirm Drop failed:", e);
+    Alert.alert("Error", "Failed to confirm drop");
+  }
+};
 
-      await fetchRoute({ latitude, longitude });
-    } catch (e) {
-      console.error(e);
-      Alert.alert("Error", "Failed to confirm drop");
-    }
-  };
+
 
   const handleChangeDrop = () => {
     setConfirmed(false);
@@ -531,52 +573,106 @@ export default function PassengerMainScreen() {
 
   // Messages from WebView (map events)
   const handleWebMessage = (event: any) => {
-    try {
-      const data = JSON.parse(event.nativeEvent.data);
-      if (data.type === "longPress" || data.type === "press") {
-        const lat = data.lat;
-        const lng = data.lng;
+  // raw string from webview
+  console.log("[WEBVIEW -> RN] raw:", event.nativeEvent?.data);
 
-        setPendingDrop({ latitude: lat, longitude: lng });
-        setPendingRegion({
-          latitude: lat,
-          longitude: lng,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
-        });
+  try {
+    const data = JSON.parse(event.nativeEvent.data);
+    console.log("[WEBVIEW -> RN] parsed:", data);
+     
+    if (data.type === "invalidArea") {
+  console.log("User clicked outside allowed polygon");
 
-        // optionally update camera center
-        setCameraCenter([lng, lat]);
-      } else if (data.type === "regionChange") {
-        // region change reported by map (center)
-        const lat = data.lat;
-        const lng = data.lng;
-        setPendingRegion((prev) => ({
-          ...prev,
-          latitude: lat,
-          longitude: lng,
-        }));
-      }
-    } catch (err) {
-      // ignore
-      console.warn("Invalid message from webview", err);
+  Alert.alert(
+    "Outside Area",
+    "Please select a location inside Vaniyambadi service area."
+  );
+
+  return; // stop further processing
+}
+    // map html loaded (custom)
+    if (data.type === "mapReady") {
+      console.log("[WEBVIEW EVENT] mapReady received - sending subareas JSON now");
+      // adjust path if needed; make sure the JSON is included in the bundle
+      const json = require("../data/all_subareas_updated.json");
+      webRef.current?.postMessage(JSON.stringify({ type: "loadSubareas", data: json }));
+      console.log("[RN -> WEBVIEW] loadSubareas posted (length):", Object.keys(json || {}).length);
+      return;
     }
-  };
+    if (data.type === "invalidArea") {
+  ToastAndroid.show(
+    "You cannot select outside service area",
+    ToastAndroid.SHORT
+  );
+  return;
+}
+
+    // injectedReady wes the HTML we loaded executed injectedJavaScript
+    if (data.type === "injectedReady") {
+      console.log("[WEBVIEW EVENT] injectedReady", data);
+      return;
+    }
+
+    // click / long press
+    if (data.type === "press" || data.type === "longPress") {
+      console.log(`[WEBVIEW EVENT] ${data.type} @`, data.lat, data.lng);
+      setPendingDrop({ latitude: data.lat, longitude: data.lng });
+      setPendingRegion({
+        latitude: data.lat,
+        longitude: data.lng,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      });
+      // DO NOT set cameraCenter here (map should not jump)
+      return;
+    }
+
+    // regionChange from webview (map center changed)
+    if (data.type === "regionChange") {
+      console.log("[WEBVIEW EVENT] regionChange center:", data.lat, data.lng);
+      setPendingRegion(prev => ({ ...prev, latitude: data.lat, longitude: data.lng }));
+      return;
+    }
+
+    // any other message
+    console.log("[WEBVIEW EVENT] unhandled message", data);
+  } catch (err) {
+    console.warn("[WEBVIEW -> RN] parse error:", err);
+  }
+};
+
+
+
 
   // Send updates to webview whenever markers, route or camera changes
-  useEffect(() => {
-    const payload = {
-      type: "update",
-      pickup,
-      drop,
-      pendingDrop,
-      routeCoords,
-      cameraCenter: { lng: cameraCenter[0], lat: cameraCenter[1] },
+useEffect(() => {
+  const payload = {
+    type: "update",
+    pickup,
+    drop,
+    pendingDrop,
+    routeCoords,
+    cameraCenter: { lng: cameraCenter[0], lat: cameraCenter[1] },
+    cameraZoom,
+    confirmed,
+  };
+  try {
+    console.log("[RN -> WEBVIEW] posting update payload:", {
+      pickup: !!pickup,
+      drop: !!drop,
+      pendingDrop: !!pendingDrop,
+      routeCoordsLength: routeCoords?.length || 0,
+      cameraCenter,
       cameraZoom,
       confirmed,
-    };
+    });
     webRef.current?.postMessage(JSON.stringify(payload));
-  }, [pickup, drop, pendingDrop, routeCoords, cameraCenter, cameraZoom, confirmed]);
+  } catch (e) {
+    console.warn("[RN -> WEBVIEW] failed to post update:", e);
+  }
+}, [pickup, drop, pendingDrop, routeCoords, cameraCenter, cameraZoom, confirmed]);
+
+
 
   // When user selects a subarea we move camera — push a setCamera message
   useEffect(() => {
@@ -752,18 +848,30 @@ const fixedHtml = createHtml(mapTilerKeyToUrl(MAPTILER_KEY));
       {/* Map (WebView + MapTiler/Leaflet) */}
       <View style={styles.mapContainer}>
         <WebView
-  source={{
-    uri: "file:///android_asset/map.html",
-  }}
+  ref={webRef}
+  source={{ uri: "file:///android_asset/map.html" }}
   originWhitelist={['*']}
   javaScriptEnabled={true}
   domStorageEnabled={true}
   allowFileAccess={true}
   allowUniversalAccessFromFileURLs={true}
   mixedContentMode="always"
-  onMessage={(event) => console.log("FROM MAP:", event.nativeEvent.data)}
+  onMessage={handleWebMessage}
+  injectedJavaScript={`
+    // this runs inside the webview once. It posts back an "injectedReady" message so RN knows the exact HTML loaded.
+    (function(){
+      try {
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'injectedReady', time: Date.now() }));
+      } catch(e){}
+    })();
+    true;
+  `}
   style={{ flex: 1 }}
 />
+
+
+
+
 
 
 
