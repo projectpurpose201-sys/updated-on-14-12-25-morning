@@ -1,4 +1,3 @@
-
 import "react-native-reanimated";
 import React, { useState, useEffect, useRef } from "react";
 import AdvertisementBanner from "../../components/AdvertisementBanner";
@@ -120,9 +119,11 @@ export default function PassengerMainScreen() {
   }, [subareaSearch, subareas]);
 
   useEffect(() => {
-    if (countdown <= 0 && rideId && ride?.status === "pending") {
-      autoCancelIfNoDriver();
-    }
+    if (countdown === 0) return;   // ⛔ ignore initial render
+
+if (countdown <= 0 && rideId && ride?.status === "pending") {
+  autoCancelIfNoDriver();
+}
   }, [countdown, rideId, ride]);
 
   // --- Get current location ---
@@ -314,39 +315,15 @@ const handleSelectSubarea = (subareaName: string) => {
   const [pendingDrop, setPendingDrop] = useState<{ latitude: number; longitude: number } | null>(null);
 
   const handleConfirmDrop = async () => {
-  if (!pendingRegion) {
-    console.warn("[RN] handleConfirmDrop: no pendingRegion");
-    return;
-  }
-
-  const { latitude, longitude } = pendingRegion;
-  console.log("[RN] handleConfirmDrop using pendingRegion:", pendingRegion);
-
+  // Instead of using pendingRegion from RN, ask the webview to confirm
+  console.log("[RN] handleConfirmDrop -> asking webview to confirm center");
   try {
-    const res = await fetch(
-      `https://us1.locationiq.com/v1/reverse.php?key=${LOCATIONIQ_KEY}&lat=${latitude}&lon=${longitude}&format=json`
-    );
-    const data = (await res.json()) as { display_name?: string };
-    const address = data.display_name || "";
-
-    const areaName = getAreaName({ lat: latitude, lng: longitude }) || "Unknown Area";
-
-    setDrop({
-      latitude,
-      longitude,
-      address: `${address}, ${areaName}`,
-    });
-    setDropSubarea(areaName);
-    setConfirmed(true);
-
-    console.log("[RN] confirmed drop - fetching route now");
-    await fetchRoute({ latitude, longitude });
-    console.log("[RN] fetchRoute done - routeCoords length:", routeCoords?.length || "unknown (will log when updated)");
+    webRef.current?.postMessage(JSON.stringify({ type: "confirm" }));
   } catch (e) {
-    console.error("[RN] Confirm Drop failed:", e);
-    Alert.alert("Error", "Failed to confirm drop");
+    console.warn("[RN] failed to post confirm:", e);
   }
 };
+
 
 
 
@@ -521,28 +498,36 @@ const handleSelectSubarea = (subareaName: string) => {
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "rides", filter: `id=eq.${rideId}` },
         (payload) => {
-          const newRide = payload.new;
-          console.log("Ride updated:", newRide);
-          setRide(newRide);
+  const newRide = payload.new;
+  console.log("Ride updated:", newRide);
 
-          if (newRide.status === "accepted") {
-            Alert.alert("Driver found!", "Your driver has accepted the ride.");
-          }
-          if (newRide.status === "arrived") {
-            Alert.alert("Driver arrived!", "Please meet your driver.");
-          }
-          if (newRide.status === "in_progress") {
-            Alert.alert("Ride Started", "Enjoy your trip.");
-          }
-          if (newRide.status === "completed") {
-            Alert.alert("Ride Completed", "Thanks for riding!");
-            setRideId(null);
-          }
-          if (newRide.status === "cancelled") {
-            Alert.alert("Ride Cancelled", newRide.cancellation_reason || "Your ride was cancelled.");
-            setRideId(null);
-          }
-        }
+  // ❗ Ignore realtime updates while searching for driver
+  if (newRide.status !== ride?.status) {
+  console.log("Ride updated:", newRide);
+}
+
+setRide(newRide);
+
+if (newRide.status === "accepted") {
+  Alert.alert("Driver found!", "Your driver has accepted the ride.");
+}
+if (newRide.status === "arrived") {
+  Alert.alert("Driver arrived!", "Please meet your driver.");
+}
+if (newRide.status === "in_progress") {
+  Alert.alert("Ride Started", "Enjoy your trip.");
+}
+if (newRide.status === "completed") {
+  Alert.alert("Ride Completed", "Thanks for riding!");
+  setRideId(null);
+}
+if (newRide.status === "cancelled") {
+  Alert.alert("Ride Cancelled", newRide.cancellation_reason || "Your ride was cancelled.");
+  setRideId(null);
+}
+
+}
+
       )
       .subscribe();
 
@@ -572,14 +557,67 @@ const handleSelectSubarea = (subareaName: string) => {
   const webRef = useRef<any>(null);
 
   // Messages from WebView (map events)
-  const handleWebMessage = (event: any) => {
+  const handleWebMessage = async (event: any) => {
+    
   // raw string from webview
   console.log("[WEBVIEW -> RN] raw:", event.nativeEvent?.data);
 
   try {
     const data = JSON.parse(event.nativeEvent.data);
     console.log("[WEBVIEW -> RN] parsed:", data);
-     
+        // Confirm returned from webview (map center snapped or not)
+    if (data.type === "confirmDrop") {
+      console.log("[WEBVIEW -> RN] confirmDrop:", data);
+      const lat = data.lat;
+      const lng = data.lng;
+      try {
+        // Reverse geocode using your existing LOCATIONIQ key
+        const res = await fetch(
+          `https://us1.locationiq.com/v1/reverse.php?key=${LOCATIONIQ_KEY}&lat=${lat}&lon=${lng}&format=json`
+        );
+        const rjson = await res.json();
+        const address = rjson.display_name || "";
+
+        const areaName = getAreaName({ lat, lng }) || "Unknown Area";
+
+        setDrop({
+          latitude: lat,
+          longitude: lng,
+          address: `${address}, ${areaName}`,
+        });
+        setDropSubarea(areaName);
+        setConfirmed(true);
+
+        console.log("[RN] confirmed drop (from webview) - fetching route now");
+        await fetchRoute({ latitude: lat, longitude: lng });
+        console.log("[RN] fetchRoute done - routeCoords length:", routeCoords?.length || "unknown (will log when updated)");
+      } catch (e) {
+        console.error("[RN] Confirm Drop (from webview) failed:", e);
+        Alert.alert("Error", "Failed to confirm drop");
+      }
+      return;
+    }
+
+         if (data.type === "mapReady") {
+      console.log("[WEBVIEW EVENT] mapReady received - sending subareas JSON now");
+      const json = require("../data/all_subareas_updated.json");
+      webRef.current?.postMessage(JSON.stringify({ type: "loadSubareas", data: json }));
+      console.log("[RN -> WEBVIEW] loadSubareas posted (length):", Object.keys(json || {}).length);
+
+      // If we already fetched pickup (current location), immediately send userLocation so map centers on passenger
+      if (pickup && pickup.latitude && pickup.longitude) {
+        console.log("[RN -> WEBVIEW] sending userLocation after mapReady ->", { latitude: pickup.latitude, longitude: pickup.longitude });
+        webRef.current?.postMessage(JSON.stringify({
+          type: "userLocation",
+          lat: pickup.latitude,
+          lng: pickup.longitude,
+          center: true,
+          zoom: 17
+        }));
+      }
+      return;
+    }
+
     if (data.type === "invalidArea") {
   console.log("User clicked outside allowed polygon");
 
@@ -646,7 +684,9 @@ const handleSelectSubarea = (subareaName: string) => {
 
   // Send updates to webview whenever markers, route or camera changes
 useEffect(() => {
+  
   const payload = {
+    
     type: "update",
     pickup,
     drop,

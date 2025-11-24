@@ -8,21 +8,6 @@
     html, body, #map { height: 100%; margin: 0; padding: 0; }
     .leaflet-container { touch-action: pan-y pinch-zoom; -webkit-tap-highlight-color: transparent; }
 
-    /* Center marker overlay */
-    #centerMarker {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      height: 38px;
-      width: 38px;
-      margin-left: -19px;
-      margin-top: -38px;
-      background-image: url('https://cdn-icons-png.flaticon.com/512/535/535239.png');
-      background-size: cover;
-      z-index: 999;
-      pointer-events: none;
-    }
-
     .polygon-label {
       font-weight: bold;
       color: #1b5e20;
@@ -39,7 +24,6 @@
 
 <body>
   <div id="map"></div>
-  <div id="centerMarker"></div>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
@@ -98,7 +82,7 @@
     let pendingCenterOnUser = false;
 
     /* ============================
-       POINT-IN-POLYGON
+       POINT-IN-POLYGON (helper)
     ============================= */
     function pointInPolygon(point, vs) {
       const x = point[1], y = point[0];
@@ -125,6 +109,7 @@
 
     /* ============================
        USER LOCATION HANDLING
+       (always center on first user location)
     ============================= */
     function setUserLocation(lat, lng, centerMap = true, zoom = 17) {
       // always show marker immediately
@@ -134,12 +119,12 @@
         userMarker.setLatLng([lat, lng]);
       }
 
-      // Only center camera if polygons exist
-      if (centerMap && polygonsLoaded) {
+      // ALWAYS center on first user location if requested
+      if (centerMap) {
         map.setView([lat, lng], zoom);
         firstLocationSet = true;
         pendingCenterOnUser = false;
-      } else if (centerMap && !polygonsLoaded) {
+      } else if (!centerMap && !firstLocationSet) {
         pendingUserLocation = { lat, lng, zoom };
         pendingCenterOnUser = true;
       }
@@ -204,14 +189,14 @@
         return;
       }
 
-      // If no user location yet → fit polygon
+      // If no user location yet → fit polygon bounds
       if (!firstLocationSet && allowedBounds) {
         map.fitBounds(allowedBounds.pad(0.02));
       }
     }
 
     /* ============================
-       UPDATE MARKERS
+       UPDATE MARKERS (pickup/drop/pending/route)
     ============================= */
     function updateMarkers(payload) {
       const { pickup, drop, pendingDrop, routeCoords } = payload;
@@ -221,6 +206,9 @@
         const lng = pickup.longitude || pickup.lng;
         if (!pickupMarker) pickupMarker = L.marker([lat, lng], { icon: pickupIcon }).addTo(map);
         else pickupMarker.setLatLng([lat, lng]);
+      } else if (pickupMarker) {
+        map.removeLayer(pickupMarker);
+        pickupMarker = null;
       }
 
       if (drop && (drop.latitude || drop.lat)) {
@@ -247,7 +235,7 @@
     }
 
     /* ============================
-       SNAP TO NEAREST POLYGON
+       SNAP / NEAREST POLYGON (helpers)
     ============================= */
     function haversine(a, b) {
       const R = 6371000;
@@ -273,7 +261,8 @@
     }
 
     /* ============================
-       CONFIRM DROP LOGIC
+       CONFIRM DROP (uses map center)
+       Posts back: { type: "confirmDrop", lat, lng, snapped }
     ============================= */
     function confirmDrop() {
       const c = map.getCenter();
@@ -288,9 +277,13 @@
         return;
       }
 
-      // Center outside → snap to nearest
+      // center outside → snap to nearest polygon center
       const snap = nearestPolygonCenter(c);
-      if (!snap) return;
+      if (!snap) {
+        // no polygon available — return invalidArea to RN
+        window.ReactNativeWebView.postMessage(JSON.stringify({ type: "invalidArea" }));
+        return;
+      }
 
       map.flyTo([snap.lat, snap.lng], map.getZoom());
 
@@ -372,7 +365,6 @@
        READY SIGNAL
     ============================= */
     window.ReactNativeWebView?.postMessage(JSON.stringify({type: "mapReady"}));
-
   </script>
 </body>
 </html>
