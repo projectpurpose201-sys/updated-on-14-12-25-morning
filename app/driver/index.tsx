@@ -30,6 +30,9 @@ import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 import { StatusBar as RNStatusBar } from "react-native";
 import MapView, { Marker, Polyline } from "react-native-maps";
 import RideRequests from "../driver/riderequest";
+import LottieView from "lottie-react-native";
+import { Image } from "react-native";
+
 const SCREEN_WIDTH = Dimensions.get("window").width;
 
 type DriverStatus = "not_submitted" | "pending_verification" | "approved" | "rejected" | "pending" ;
@@ -38,6 +41,7 @@ export default function DriverMainScreen() {
   const router = useRouter();
   const { user, signOut } = useAuth();
   const [incomingRides, setIncomingRides] = useState<any[]>([]);
+const [initialLoading, setInitialLoading] = useState(true);
 
 
   // Drawer animation
@@ -61,10 +65,14 @@ const [modalVisible, setModalVisible] = useState(false);
 useEffect(() => {
   if (!user?.id) return;
 
-  // initial driver setup
-  checkDriverStatus();
-  getCurrentLocation();
-  fetchDashboardData();
+  const loadInitial = async () => {
+    await checkDriverStatus();
+    await getCurrentLocation();
+    await fetchDashboardData();
+    setInitialLoading(false); // <-- important
+  };
+
+  loadInitial();
 
 
   // 1) Fetch pending rides when driver becomes online
@@ -107,7 +115,8 @@ useEffect(() => {
     if (!ride) return;
 
     if (ride.status === "pending") {
-      if (!isOnline || driverStatus !== "approved") return;
+      if (!isOnline) return;
+
       setIncomingRides((prev) => {
         const exists = prev.find((r) => r.id === ride.id);
         if (exists) {
@@ -199,32 +208,38 @@ useEffect(() => {
   }
 }, [driverStatus, user]);
 
-
-
-
-
-
+useEffect(() => {
+  if (driverStatus === "approved") {
+    setIsOnline(true);
+  }
+}, [driverStatus]);
 
 
   // Back handler (drawer + logout)
-  useFocusEffect(
-    React.useCallback(() => {
-      const onBackPress = () => {
-        if (drawerOpen) {
-          toggleDrawer();
-          return true;
+useFocusEffect(
+  React.useCallback(() => {
+    // When driver returns to home screen after finishing a ride
+    if (isOnline && driverStatus === "approved") {
+      // Refresh pending rides
+      (async () => {
+        try {
+          const { data, error } = await supabase
+            .from("rides")
+            .select("*")
+            .eq("status", "pending")
+            .order("created_at", { ascending: true });
+          
+          if (!error && data) {
+            setIncomingRides(data || []);
+          }
+        } catch (e) {
+          console.error("Focus fetch error:", e);
         }
-        Alert.alert("Logout", "Do you want to logout?", [
-          { text: "Cancel", style: "cancel" },
-          { text: "Logout", onPress: () => signOut() },
-        ]);
-        return true;
-      };
+      })();
+    }
+  }, [isOnline, driverStatus])
+);
 
-      const subscription = BackHandler.addEventListener("hardwareBackPress", onBackPress);
-      return () => subscription.remove();
-    }, [drawerOpen, signOut])
-  );
 
   // -------------------------
   // UI helpers
@@ -509,6 +524,44 @@ const toggleOnlineStatus = async () => {
       Alert.alert("Error", e.message || String(e));
     }
   };
+if (initialLoading) {
+  return (
+    <SafeAreaView
+      style={{
+        flex: 1,
+        justifyContent: "center",
+        alignItems: "center",
+        backgroundColor: "#ffffff",
+      }}
+    >
+      {/* Logo */}
+      <Image
+        source={require("../../assets/logo.png")}
+        style={{ width: 120, height: 120, marginBottom: 20 }}
+        resizeMode="contain"
+      />
+
+      {/* Animated Auto Rickshaw */}
+      <LottieView
+        autoPlay
+        loop
+        style={{ width: 170, height: 170 }}
+        source={require("../../assets/auto.json")}
+      />
+
+      <Text
+        style={{
+          marginTop: 20,
+          fontSize: 18,
+          fontWeight: "600",
+          color: "#333",
+        }}
+      >
+        Getting things ready for you…
+      </Text>
+    </SafeAreaView>
+  );
+}
 
   // -------------------------
   // Render
@@ -633,18 +686,29 @@ const toggleOnlineStatus = async () => {
       {driverStatus === "approved" && (
         <>
           <Card style={styles.card}>
-            <View style={styles.row}>
-              <Text style={styles.title}>Driver Status</Text>
-              <Switch
-                value={isOnline}
-                onValueChange={toggleOnlineStatus}
-                disabled={loading}
-              />
-            </View>
-            <Text>
-              {isOnline ? "🟢 Online - Ready for rides" : "🔴 Offline"}
-            </Text>
-          </Card>
+  <Text style={styles.title}>Driver Status</Text>
+
+  <View style={{ flexDirection: "row", alignItems: "center", marginTop: 6 }}>
+    <View
+      style={{
+        width: 12,
+        height: 12,
+        backgroundColor: "#00C853",
+        borderRadius: 6,
+        marginRight: 8,
+      }}
+    />
+    <Text style={{ fontSize: 16, fontWeight: "500", color: "#00C853" }}>
+      Live — receiving ride requests
+    </Text>
+  </View>
+
+  <Text style={{ marginTop: 4, color: "#555" }}>
+    You are automatically online when approved.
+  </Text>
+</Card>
+
+
 
         
 
@@ -654,11 +718,8 @@ const toggleOnlineStatus = async () => {
     Pending Rides
   </Text>
 
-  <View style={{ maxHeight: 320 }}> 
-    <ScrollView
-      style={{ flexGrow: 0 }}
-      showsVerticalScrollIndicator={false}
-    >
+  <View style={{ height: 300, overflow: "hidden" }}>
+   <ScrollView nestedScrollEnabled={true}>
       {incomingRides.length === 0 ? (
         <View
           style={{
