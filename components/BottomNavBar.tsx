@@ -21,12 +21,6 @@ const PassengerBottomNav = () => {
         inactiveIcon: "home-outline",
       },
       {
-        name: "Book",
-        route: "/passenger/book-ride",
-        activeIcon: "car",
-        inactiveIcon: "car-outline",
-      },
-      {
         name: "History",
         route: "/passenger/ride-history",
         activeIcon: "time",
