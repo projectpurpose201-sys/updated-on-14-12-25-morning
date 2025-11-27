@@ -1,3 +1,4 @@
+// --- SAME IMPORTS ---
 import React, { useState } from 'react';
 import {
   View,
@@ -5,87 +6,101 @@ import {
   StyleSheet,
   SafeAreaView,
   ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  TouchableOpacity,
   Alert,
+  Linking,
 } from 'react-native';
-import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useAuth } from '../../hooks/useAuth';
+
 import { theme } from '../../utils/theme';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Card } from '../../components/ui/Card';
-import * as Notifications from "expo-notifications";
-import { registerForPushNotificationsAsync, savePushTokenToSupabase } from "../../utils/NotificationService";
-import { clearPushToken } from "../../utils/NotificationService";
-export default function SignInScreen() {
+
+export default function SignUpScreen() {
   const router = useRouter();
-  const { signIn } = useAuth();
+  const { role: routeRole } = useLocalSearchParams<{ role?: 'passenger' | 'driver' }>();
+  const role = routeRole || 'passenger';
+
+  const { signUp } = useAuth();
+  const [loading, setLoading] = useState(false);
 
   const [formData, setFormData] = useState({
+    name: '',
+    phone: '',
     email: '',
     password: '',
+    confirmPassword: '',
   });
-  const [loading, setLoading] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
 
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [acceptedPolicy, setAcceptedPolicy] = useState(false);
+
+  // ---------------- VALIDATION (unchanged) ----------------
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
-    if (!formData.email.trim()) {
-      newErrors.email = 'Email is required';
-    } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-      newErrors.email = 'Please enter a valid email address';
-    }
+    if (!formData.name) newErrors.name = "Name is required";
+    if (!formData.phone) newErrors.phone = "Phone number is required";
+    else if (!/^\d{10}$/.test(formData.phone.replace(/\D/g, "")))
+      newErrors.phone = "Enter valid 10-digit phone";
 
-    if (!formData.password) {
-      newErrors.password = 'Password is required';
-    }
+    if (!formData.email) newErrors.email = "Email is required";
+    else if (!/\S+@\S+\.\S+/.test(formData.email))
+      newErrors.email = "Enter valid email";
+
+    if (!formData.password) newErrors.password = "Password required";
+    else if (formData.password.length < 6)
+      newErrors.password = "Password must be 6+ chars";
+
+    if (formData.password !== formData.confirmPassword)
+      newErrors.confirmPassword = "Passwords do not match";
+
+    if (!acceptedPolicy)
+      newErrors.acceptedPolicy = "You must agree to continue";
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
 
-const handleSignIn = async () => {
-  if (!validateForm()) return;
-
-  setLoading(true);
-  try {
-    const { data, error } = await signIn(formData.email, formData.password);
-
-    if (error) {
-      Alert.alert('Error', error.message);
-      return;
-    }
-
-    // ✅ After successful login
-    if (data?.user) {
-      const userId = data.user.id;
-
-      // 1. Register for notifications
-      const token = await registerForPushNotificationsAsync();
-
-      // 2. Save token to Supabase
-      if (token) {
-        await savePushTokenToSupabase(userId, token);
-        console.log("Push token saved to Supabase:", token);
-      }
-    }
-
-    // Navigation handled by useAuth or router
-  } catch (error: any) {
-    Alert.alert('Error', error.message);
-  } finally {
-    setLoading(false);
-  }
-};
-
-
   const updateFormData = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-    if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: '' }));
+    if (errors[field]) setErrors(prev => ({ ...prev, [field]: '' }));
+  };
+
+  // ---------------- SIGN UP (unchanged) ----------------
+  const handleSignUp = async () => {
+    if (!validateForm()) return;
+
+    setLoading(true);
+    try {
+      const { error } = await signUp(formData.email, formData.password, {
+        name: formData.name,
+        phone: formData.phone,
+        role,
+      });
+
+      if (error) return Alert.alert("Error", error.message);
+
+      Alert.alert(
+        "Success",
+        "Check your email to verify your account.",
+        [{ text: "OK", onPress: () => router.push("/auth/sign-in") }]
+      );
+    } catch (err: any) {
+      Alert.alert("Error", err.message);
+    } finally {
+      setLoading(false);
     }
   };
+
+  // ===========================================================
+  // ===================== NEW UI DESIGN ========================
+  // ===========================================================
 
   return (
     <SafeAreaView style={styles.container}>
@@ -93,132 +108,224 @@ const handleSignIn = async () => {
         colors={[theme.colors.primary, theme.colors.secondary]}
         style={styles.gradient}
       >
-        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-          <View style={styles.content}>
-            <View style={styles.header}>
-              <Text style={styles.title}>Welcome Back</Text>
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={{ flex: 1 }}
+        >
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.scrollContent}
+          >
+
+            {/* HEADER */}
+            <View style={styles.headerBox}>
+              <Text style={styles.title}>Create Your Account</Text>
               <Text style={styles.subtitle}>
-                Sign in to your account
+                Sign up as {role === "passenger" ? "Passenger" : "Driver"}
               </Text>
             </View>
 
-            <Card style={styles.formCard}>
+            {/* WHITE CARD */}
+            <View style={styles.formCard}>
               <Input
-                label="Email Address"
+                label="Full Name"
+                value={formData.name}
+                onChangeText={(v) => updateFormData("name", v)}
+                placeholder="John Doe"
+                leftIcon="person"
+                error={errors.name}
+              />
+
+              <Input
+                label="Phone Number"
+                value={formData.phone}
+                onChangeText={(v) => updateFormData("phone", v)}
+                placeholder="9876543210"
+                keyboardType="phone-pad"
+                leftIcon="call"
+                error={errors.phone}
+              />
+
+              <Input
+                label="Email"
                 value={formData.email}
-                onChangeText={(value) => updateFormData('email', value)}
-                error={errors.email}
-                leftIcon="mail"
-                placeholder="your@email.com"
+                onChangeText={(v) => updateFormData("email", v)}
+                placeholder="email@example.com"
                 keyboardType="email-address"
+                leftIcon="mail"
                 autoCapitalize="none"
+                error={errors.email}
               />
 
               <Input
                 label="Password"
                 value={formData.password}
-                onChangeText={(value) => updateFormData('password', value)}
-                error={errors.password}
-                leftIcon="lock-closed"
-                placeholder="Enter your password"
+                onChangeText={(v) => updateFormData("password", v)}
+                placeholder="Create password"
                 secureTextEntry
+                leftIcon="lock-closed"
+                error={errors.password}
               />
 
-              <Button
-                title="Sign In"
-                onPress={handleSignIn}
-                loading={loading}
-                style={styles.signInButton}
+              <Input
+                label="Confirm Password"
+                value={formData.confirmPassword}
+                onChangeText={(v) => updateFormData("confirmPassword", v)}
+                placeholder="Re-enter password"
+                secureTextEntry
+                leftIcon="lock-closed"
+                error={errors.confirmPassword}
               />
 
-              <Button
-                title="Forgot Password?"
-                onPress={() => router.push('/auth/forgot-password')}
-                variant="ghost"
-                style={styles.forgotButton}
-              />
+              {/* TERMS CHECKBOX */}
+              <TouchableOpacity
+                style={styles.checkboxRow}
+                onPress={() => setAcceptedPolicy(!acceptedPolicy)}
+              >
+                <View style={[styles.checkbox, acceptedPolicy && styles.checkboxChecked]}>
+                  {acceptedPolicy && <Text style={styles.checkMark}>✓</Text>}
+                </View>
 
-              <View style={styles.divider}>
-                <Text style={styles.dividerText}>Don't have an account?</Text>
-              </View>
+                <Text style={styles.policyText}>
+                  I agree to the{" "}
+                  <Text
+                    style={styles.link}
+                    onPress={() =>
+                      Linking.openURL(
+                        "https://docs.google.com/document/d/e/2PACX-1vS1wHK9uZ0VkHuDOb25FXrtIO9T318OfeVi0RXh27_8_g4QEhAIKpW5LSEp0zocUErqIMWW9WfsJDzm/pub"
+                      )
+                    }
+                  >
+                    Privacy Policy & Terms
+                  </Text>
+                </Text>
+              </TouchableOpacity>
 
+              {errors.acceptedPolicy && (
+                <Text style={styles.errorText}>{errors.acceptedPolicy}</Text>
+              )}
+
+              {/* BUTTONS */}
               <Button
                 title="Create Account"
-                onPress={() => router.push('/auth/role-selection')}
-                variant="outline"
-                style={styles.createButton}
+                onPress={handleSignUp}
+                loading={loading}
+                disabled={!acceptedPolicy}
+                style={{ marginTop: 20 }}
               />
-            </Card>
+
+              <Button
+                title="Already have an account?"
+                variant="ghost"
+                onPress={() => router.push('/auth/sign-in')}
+                style={{ marginTop: 10 }}
+              />
+
+              {role === "passenger" && (
+                <Button
+                  title="Continue as Driver →"
+                  variant="ghost"
+                  onPress={() => router.push("/auth/sign-up?role=driver")}
+                  style={{ marginTop: 4 }}
+                />
+              )}
+            </View>
 
             <Button
               title="← Back"
-              onPress={() => router.back()}
               variant="ghost"
-              style={styles.backButton}
-              textStyle={styles.backText}
+              onPress={() => router.back()}
+              textStyle={{ color: "#fff" }}
+              style={{ marginTop: 15 }}
             />
-          </View>
-        </ScrollView>
+
+          </ScrollView>
+        </KeyboardAvoidingView>
       </LinearGradient>
     </SafeAreaView>
   );
 }
 
+// ======================== NEW STYLES =========================
+
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  container: { flex: 1 },
+  gradient: { flex: 1 },
+
+  scrollContent: {
+    padding: 20,
+    paddingBottom: 40,
   },
-  gradient: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  content: {
-    paddingHorizontal: theme.spacing.xl,
-    paddingTop: theme.spacing.xxl * 2,
-    paddingBottom: theme.spacing.xl,
-  },
-  header: {
+
+  headerBox: {
+    marginTop: 10,
+    marginBottom: 20,
     alignItems: 'center',
-    marginBottom: theme.spacing.xl,
   },
+
   title: {
-    ...theme.typography.heading1,
-    color: '#fff',
-    marginBottom: theme.spacing.sm,
-    textAlign: 'center',
+    fontSize: 30,
+    color: "#fff",
+    fontWeight: "700",
+    textAlign: "center",
   },
+
   subtitle: {
-    ...theme.typography.body,
-    color: 'rgba(255, 255, 255, 0.8)',
-    textAlign: 'center',
+    fontSize: 15,
+    color: "rgba(255,255,255,0.85)",
+    marginTop: 6,
   },
+
   formCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    marginBottom: theme.spacing.lg,
+    width: "100%",
+    padding: 20,
+    borderRadius: 18,
+    backgroundColor: "rgba(255,255,255,0.96)",
+    elevation: 4,
   },
-  signInButton: {
-    marginTop: theme.spacing.md,
+
+  checkboxRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 18,
   },
-  forgotButton: {
-    marginTop: theme.spacing.sm,
+
+  checkbox: {
+    width: 24,
+    height: 24,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: "#bbb",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#fff",
   },
-  divider: {
-    alignItems: 'center',
-    marginVertical: theme.spacing.lg,
-  },
-  dividerText: {
-    ...theme.typography.bodySmall,
-    color: theme.colors.textSecondary,
-  },
-  createButton: {
+
+  checkboxChecked: {
+    backgroundColor: theme.colors.primary,
     borderColor: theme.colors.primary,
   },
-  backButton: {
-    alignSelf: 'flex-start',
+
+  checkMark: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
   },
-  backText: {
-    color: '#fff',
+
+  policyText: {
+    marginLeft: 12,
+    fontSize: 14,
+    flex: 1,
+    flexWrap: "wrap",
+  },
+
+  link: {
+    color: theme.colors.primary,
+    textDecorationLine: "underline",
+  },
+
+  errorText: {
+    color: "red",
+    marginTop: 5,
   },
 });
