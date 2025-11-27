@@ -1,139 +1,218 @@
-import React, { useEffect } from 'react';
-import { View, Text, StyleSheet, SafeAreaView } from 'react-native';
-import { useRouter } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useAuth } from '../hooks/useAuth';
-import { theme } from '../utils/theme';
-import { Button } from '../components/ui/Button';
+import React, { useEffect, useRef, useState } from "react";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Animated,
+  SafeAreaView,
+  Easing,
+  LayoutChangeEvent,
+} from "react-native";
+import { useRouter } from "expo-router";
+import { useAuth } from "../hooks/useAuth";
+import { LinearGradient } from "expo-linear-gradient";
 
-export default function WelcomeScreen() {
+// Animated text
+const TEXT = " Let's go  ";
+
+const WelcomeScreen: React.FC = () => {
   const router = useRouter();
-  const { user, loading } = useAuth();
+  const { user, loading } = useAuth(); // 🔥 logic from Code 1
 
-  // Redirect if user is already logged in
+  // Animation
+  const [textWidth, setTextWidth] = useState<number>(0);
+  const anim = useRef(new Animated.Value(0)).current;
+
+  // 🔥 Logic from Code 1: Redirect when logged in
   useEffect(() => {
     if (!loading && user) {
-      if (user.role === 'passenger') {
-        router.replace('/passenger');
-      } else if (user.role === 'driver') {
-        router.replace('/driver');
-      }
+      if (user.role === "passenger") router.replace("/passenger");
+      else if (user.role === "driver") router.replace("/driver");
     }
   }, [user, loading]);
 
+  // Animation trigger
+  useEffect(() => {
+    if (textWidth <= 0) return;
+    Animated.timing(anim, {
+      toValue: 1,
+      duration: 2200,
+      easing: Easing.inOut(Easing.exp),
+      useNativeDriver: true,
+    }).start();
+  }, [textWidth]);
+
+  const translateX = anim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, textWidth],
+  });
+
+  const onTextLayout = (e: LayoutChangeEvent) => {
+    const width = Math.ceil(e.nativeEvent.layout.width);
+    if (width && width !== textWidth) setTextWidth(width);
+  };
+
+  // Loading screen (from both codes)
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
+        <View style={styles.center}>
           <Text style={styles.loadingText}>Loading...</Text>
         </View>
       </SafeAreaView>
     );
   }
 
+  // 🔥 Final UI using Code 2 design
   return (
     <SafeAreaView style={styles.container}>
-      <LinearGradient
-        colors={[theme.colors.primary, theme.colors.secondary]}
-        style={styles.gradient}
-      >
-        <View style={styles.content}>
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.title}>Vaniyambadi Ride</Text>
-            <Text style={styles.subtitle}>
-              Your trusted ride partner in Vaniyambadi
-            </Text>
-          </View>
+      <View style={styles.center}>
+        <View style={styles.textWrapper}>
+          {/* Animated text */}
+          <Text
+            style={styles.letsGoText}
+            onLayout={onTextLayout}
+            numberOfLines={1}
+          >
+            {TEXT}
+          </Text>
 
-          {/* Illustration */}
-          <View style={styles.illustration}>
-            <Text style={styles.emoji}>🚕</Text>
-          </View>
-
-          {/* Buttons */}
-          <View style={styles.buttonContainer}>
-            <Button
-              title="Get Started"
-              onPress={() => router.push('/auth/role-selection')}
-              variant="primary"
-              size="lg"
-              style={styles.button}
-              textStyle={styles.buttonText} // make text visible
+          {/* Mask */}
+          {textWidth > 0 && (
+            <Animated.View
+              pointerEvents="none"
+              style={[styles.mask, { width: textWidth, transform: [{ translateX }] }]}
             />
+          )}
 
-            <Button
-              title="Already have an account? Sign In"
-              onPress={() => router.push('/auth/sign-in')}
-              variant="ghost"
-              style={styles.signInButton}
-              textStyle={styles.signInText}
-            />
-          </View>
+          {/* Animated green cursor */}
+          {textWidth > 0 && (
+            <Animated.View style={[styles.cursorWrapper, { transform: [{ translateX }] }]}>
+              <LinearGradient
+                colors={["#00FF99", "#00CC66"]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 0, y: 1 }}
+                style={styles.cursor}
+              />
+            </Animated.View>
+          )}
         </View>
-      </LinearGradient>
+      </View>
+
+      {/* Bottom area with buttons */}
+      <View style={styles.bottomContainer}>
+        {/* 🔥 Keep Code1 logic for get started → role selection */}
+        <TouchableOpacity
+          style={styles.primaryButton}
+          onPress={() => router.push("/auth/role-selection")}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.primaryText}>Get Started</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.secondaryButton}
+          onPress={() => router.push("/auth/sign-in")}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.secondaryText}>Already have an account? Sign In</Text>
+        </TouchableOpacity>
+      </View>
     </SafeAreaView>
   );
-}
+};
+
+export default WelcomeScreen;
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  gradient: { flex: 1 },
-  content: {
+  container: {
     flex: 1,
-    paddingHorizontal: theme.spacing.xl,
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    backgroundColor: "#FF6F61",
+    justifyContent: "space-between",
   },
-  header: {
-    alignItems: 'center',
-    marginTop: theme.spacing.xxl * 2,
-  },
-  title: {
-    ...theme.typography.heading1,
-    color: '#fff',
-    marginBottom: theme.spacing.md,
-    textAlign: 'center',
-  },
-  subtitle: {
-    ...theme.typography.body,
-    color: 'rgba(255, 255, 255, 0.9)',
-    textAlign: 'center',
-    marginBottom: theme.spacing.lg,
-  },
-  illustration: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  emoji: {
-    fontSize: 120,
-  },
-  buttonContainer: {
-    width: '100%',
-    paddingBottom: theme.spacing.xxl,
-  },
-  button: {
-    backgroundColor: '#fff',
-    marginBottom: theme.spacing.md,
-  },
-  buttonText: {
-    color: theme.colors.primary,
-    fontWeight: 'bold',
-  },
-  signInButton: {
-    backgroundColor: 'transparent',
-  },
-  signInText: {
-    color: '#fff',
-    textAlign: 'center',
-  },
-  loadingContainer: {
+  center: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
+    justifyContent: "center",
+    alignItems: "center",
   },
+
+  /** --- ANIMATED TEXT --- */
+  textWrapper: {
+    position: "relative",
+    height: 72,
+    justifyContent: "center",
+    alignItems: "flex-start",
+    paddingHorizontal: 8,
+  },
+  letsGoText: {
+    color: "#FFFFFF",
+    fontSize: 52,
+    fontWeight: "900",
+    letterSpacing: 1,
+    lineHeight: 60,
+    textShadowColor: "rgba(0, 0, 0, 0.3)",
+    textShadowOffset: { width: 1, height: 2 },
+    textShadowRadius: 4,
+  },
+  mask: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    backgroundColor: "#FF6F61",
+  },
+  cursorWrapper: {
+    position: "absolute",
+    left: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: "center",
+  },
+  cursor: {
+    width: 6,
+    height: 50,
+    borderRadius: 4,
+    elevation: 6,
+  },
+
+  /** --- BUTTONS --- */
+  bottomContainer: {
+    backgroundColor: "#000",
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    paddingHorizontal: 20,
+    paddingVertical: 28,
+  },
+  primaryButton: {
+    backgroundColor: "#fff",
+    paddingVertical: 14,
+    borderRadius: 30,
+    alignItems: "center",
+    marginBottom: 14,
+  },
+  primaryText: {
+    fontSize: 16,
+    color: "#000",
+    fontWeight: "700",
+  },
+  secondaryButton: {
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.12)",
+    paddingVertical: 14,
+    borderRadius: 30,
+    alignItems: "center",
+  },
+  secondaryText: {
+    fontSize: 16,
+    color: "#fff",
+    fontWeight: "700",
+  },
+
+  /** Loading text */
   loadingText: {
-    ...theme.typography.body,
-    color: theme.colors.text,
+    color: "#fff",
+    fontSize: 18,
   },
 });
