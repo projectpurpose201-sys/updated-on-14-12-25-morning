@@ -551,7 +551,7 @@ if (newRide.status === "cancelled") {
 
   const fullName =
     (user && "user_metadata" in user ? (user as any).user_metadata.full_name : null) ||
-    user?.email ||
+    user?.name ||
     "Guest";
 
   // Update drop by coords helper
@@ -766,9 +766,6 @@ const fixedHtml = createHtml(mapTilerKeyToUrl(MAPTILER_KEY));
 
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={toggleDrawer}>
-          <Ionicons name="menu" size={28} color={theme.colors.primary} />
-        </TouchableOpacity>
         <View style={styles.locationBox}>
           <Ionicons name="location-sharp" size={20} color={theme.colors.primary} />
           <Text style={styles.locationText}>
@@ -779,39 +776,7 @@ const fixedHtml = createHtml(mapTilerKeyToUrl(MAPTILER_KEY));
           </Text>
         </View>
       </View>
-
-      {/* Drawer */}
-      <Animated.View style={[styles.drawer, { transform: [{ translateX: drawerAnim }] }]}>
-        <View style={styles.drawerHeader}>
-          <View style={styles.profilePlaceholder}>
-            <Ionicons name="person-circle-outline" size={60} color="#ccc" />
-          </View>
-          <Text style={styles.drawerName}>{fullName}</Text>
-        </View>
-        <TouchableOpacity style={styles.drawerItem} onPress={() => router.push("/passenger/profile")}>
-          <Text>Profile</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.drawerItem} onPress={handleLogout}>
-          <Text>Logout</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.drawerItem} onPress={() => router.push("/passenger/support")}>
-          <Text>Support</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.drawerItem}>
-          <Text>History</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.drawerItem}>
-          <Text>Rate Us</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.drawerItem}>
-          <Text>About</Text>
-        </TouchableOpacity>
-      </Animated.View>
-
-      {/* Overlay to close drawer */}
-      {drawerOpen && (
-        <TouchableOpacity style={styles.overlay} activeOpacity={1} onPress={toggleDrawer} />
-      )}
+      
 
       {/* Drop Input Section */}
       <View style={{ marginHorizontal: theme.spacing.md, marginTop: theme.spacing.sm, zIndex: 5 }}>
@@ -1221,31 +1186,7 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.2)",
     zIndex: 9,
   },
-  drawer: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    bottom: 0,
-    width: SCREEN_WIDTH * 0.75,
-    backgroundColor: "white",
-    elevation: 12,
-    padding: theme.spacing.md,
-    zIndex: 20,
-  },
-  drawerHeader: { alignItems: "center", marginBottom: 20 },
-  profilePlaceholder: { marginBottom: 8 },
-  drawerName: { fontWeight: "bold", fontSize: 16 },
-  drawerItem: { paddingVertical: 12 },
-  dropBox: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#eee",
-    margin: theme.spacing.md,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    flexShrink: 1,
-  },
+  
   dropText: {
     marginLeft: 8,
     fontSize: 14,
