@@ -32,6 +32,7 @@ import { StatusBar as RNStatusBar } from "react-native";
 import { polygons, getAreaName, getPolygonCenter } from "../../utils/geoUtils";
 import { getNearestStreet, StreetEntry } from "../../utils/locationUtils";
 import { ToastAndroid } from "react-native";
+
 const getDistance = (lat1, lon1, lat2, lon2) => {
   const R = 6371;
   const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -839,7 +840,7 @@ const fixedHtml = createHtml(mapTilerKeyToUrl(MAPTILER_KEY));
         </TouchableOpacity>
 
         {/* Subarea modal */}
-        <Modal visible={subareaModalOpen} animationType="fade" transparent onRequestClose={() => setSubareaModalOpen(false)}>
+        <Modal visible={subareaModalOpen} animationType="slide" transparent onRequestClose={() => setSubareaModalOpen(false)}>
           <TouchableWithoutFeedback onPress={() => setSubareaModalOpen(false)}>
             <View style={modalStyles.modalBackdrop} />
           </TouchableWithoutFeedback>
@@ -1320,4 +1321,14 @@ const styles = StyleSheet.create({
     borderColor: "#ccc",
     borderRadius: 6,
   },
+  avatarContainer: { position: "relative", marginBottom: theme.spacing.md },
+  avatar: {
+    width: 100, height: 100, borderRadius: 50, backgroundColor: theme.colors.primary,
+    justifyContent: "center", alignItems: "center", borderWidth: 4, borderColor: `${theme.colors.primary}20`,
+  },
+  avatarText: { color: "white", fontSize: 32, fontWeight: "bold" },
+  verifiedBadge: { position: "absolute", bottom: 0, right: 0, backgroundColor: "white", borderRadius: 10, padding: 2 },
+  name: { ...theme.typography.heading1, color: theme.colors.text, fontSize: 24, fontWeight: "700", marginBottom: theme.spacing.xs, textAlign: "center" },
+  email: { ...theme.typography.body, color: theme.colors.textSecondary, marginBottom: theme.spacing.lg, textAlign: "center" },
+
 });
