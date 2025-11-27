@@ -90,15 +90,24 @@ export default function DriverProfileScreen() {
       />
 
       {/* HEADER */}
-<View style={styles.header}>
-  <Text style={styles.headerTitle}>Driver Profile</Text>
-  <TouchableOpacity
-    style={styles.settingsButton}
-    onPress={() => router.push("/passenger/support")} // Navigate to Contact Us page
-  >
-    <Ionicons name="mail-outline" size={24} color={theme.colors.text} />
-  </TouchableOpacity>
-</View>
+      <View style={styles.header}>
+        {/* Back Button */}
+        <TouchableOpacity 
+          style={styles.backButton}
+          onPress={() => router.back()}
+        >
+          <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
+        </TouchableOpacity>
+        
+        <Text style={styles.headerTitle}>Driver Profile</Text>
+        
+        <TouchableOpacity
+          style={styles.settingsButton}
+          onPress={() => router.push("/passenger/support")} // Navigate to Contact Us page
+        >
+          <Ionicons name="mail-outline" size={24} color={theme.colors.text} />
+        </TouchableOpacity>
+      </View>
 
       {loading ? (
         <View style={styles.loadingWrapper}>
@@ -149,7 +158,6 @@ export default function DriverProfileScreen() {
       )}
 
       {/* BOTTOM NAV */}
-      <PassengerBottomNav />
     </SafeAreaView>
   );
 }
@@ -159,13 +167,29 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 20,
     paddingTop: Platform.OS === "android" ? StatusBar.currentHeight + 10 : 10,
     paddingBottom: 10,
-    justifyContent: "space-between",
   },
-  headerTitle: { fontSize: 22, fontWeight: "700", color: theme.colors.text },
-  settingsButton: { padding: 8, borderRadius: 12, backgroundColor: `${theme.colors.text}08` },
+  backButton: { 
+    padding: 8, 
+    borderRadius: 12, 
+    backgroundColor: `${theme.colors.text}08` 
+  },
+  headerTitle: { 
+    fontSize: 22, 
+    fontWeight: "700", 
+    color: theme.colors.text,
+    flex: 1,
+    textAlign: "center",
+    marginHorizontal: 10
+  },
+  settingsButton: { 
+    padding: 8, 
+    borderRadius: 12, 
+    backgroundColor: `${theme.colors.text}08` 
+  },
 
   loadingWrapper: { flex: 1, justifyContent: "center", alignItems: "center" },
 
