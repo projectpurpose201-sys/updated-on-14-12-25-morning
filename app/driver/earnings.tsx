@@ -3,16 +3,16 @@ import {
   View,
   Text,
   StyleSheet,
-  SafeAreaView,
   FlatList,
   ActivityIndicator,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useSession } from '../../contexts/AuthContext';
 import { supabase } from '../../lib/supabase';
 import { theme } from '../../utils/theme';
-import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Invoice } from '../../types';
 import { format } from 'date-fns';
@@ -84,10 +84,17 @@ export default function EarningsScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Button title="< Back" onPress={() => router.back()} variant="ghost" />
+        <Ionicons
+          name="arrow-back"
+          size={28}
+          color={theme.colors.primary}
+          style={{ padding: 4 }}
+          onPress={() => router.back()}
+        />
         <Text style={styles.title}>Earnings</Text>
+        <View style={{ width: 28 }} /> 
       </View>
 
       <Card style={styles.summaryCard}>
@@ -130,7 +137,7 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: theme.spacing.md,
-    paddingTop: theme.spacing.lg,
+    paddingTop: theme.spacing.sm,
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: theme.spacing.md,
@@ -140,7 +147,6 @@ const styles = StyleSheet.create({
     color: theme.colors.text,
     textAlign: 'center',
     flex: 1,
-    marginRight: 60,
   },
   summaryCard: {
     marginHorizontal: theme.spacing.lg,
@@ -160,10 +166,6 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 36,
     color: theme.colors.primary,
-    fontFamily: Platform.select({
-      ios: 'System',
-      android: 'sans-serif-medium',
-    }),
   },
   amountValue: {
     fontWeight: 'bold',
@@ -198,10 +200,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 22,
     color: theme.colors.primary,
-    fontFamily: Platform.select({
-      ios: 'System',
-      android: 'sans-serif-medium',
-    }),
   },
   amountValueSmall: {
     fontWeight: '600',
