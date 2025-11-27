@@ -9,45 +9,58 @@ import {
   FlatList,
   NativeSyntheticEvent,
   NativeScrollEvent,
+  ActivityIndicator,
 } from "react-native";
+import { supabase } from "../lib/supabase"; // adjust the path
+
+interface Ad {
+  id: string;
+  title?: string;
+  image_url: string;
+  link: string;
+  active: boolean;
+}
 
 export default function AdvertisementBanner() {
-  const adsToShow = [
-    {
-      id: "1",
-      image: "https://picsum.photos/id/10/400/100",
-      link: "https://chatgpt.com",
-    },
-    {
-      id: "2",
-      image: "https://picsum.photos/id/20/400/100",
-      link: "https://reactnative.dev",
-    },
-    {
-      id: "3",
-      image: "https://picsum.photos/id/30/400/100",
-      link: "https://www.google.com",
-    },
-    {
-      id: "4",
-      image: "https://picsum.photos/id/40/400/100",
-      link: "https://www.github.com",
-    },
-    {
-      id: "5",
-      image: "https://picsum.photos/id/50/400/100",
-      link: "https://about.google",
-    },
-  ];
+  const [adsToShow, setAdsToShow] = useState<Ad[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // Clone first and last items for seamless looping
-  const loopedAds = [adsToShow[adsToShow.length - 1], ...adsToShow, adsToShow[0]];
   const flatListRef = useRef<FlatList | null>(null);
   const { width } = Dimensions.get("window");
   const adItemWidth = width - 32; // width - (marginHorizontal * 2)
   
   const [activeIndex, setActiveIndex] = useState(1);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Fetch ads from Supabase
+  const fetchAds = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("ads")
+        .select("*")
+        .eq("active", true)
+        .order("created_at", { ascending: true });
+
+      if (error) throw error;
+
+      if (data && data.length > 0) {
+        setAdsToShow(data as Ad[]);
+      }
+    } catch (error) {
+      console.error("Error fetching ads:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAds();
+  }, []);
+
+  // Looping mechanism
+  const loopedAds = adsToShow.length > 0
+    ? [adsToShow[adsToShow.length - 1], ...adsToShow, adsToShow[0]]
+    : [];
 
   const stopAutoScroll = useCallback(() => {
     if (intervalRef.current) {
@@ -66,19 +79,17 @@ export default function AdvertisementBanner() {
   }, [activeIndex, stopAutoScroll]);
 
   useEffect(() => {
-    startAutoScroll();
+    if (adsToShow.length > 0) startAutoScroll();
     return () => stopAutoScroll();
-  }, [startAutoScroll, stopAutoScroll]);
+  }, [adsToShow, startAutoScroll, stopAutoScroll]);
 
   const onMomentumScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const newIndex = Math.round(event.nativeEvent.contentOffset.x / adItemWidth);
 
     if (newIndex === 0) {
-      // Scrolled to the cloned last item at the beginning
       setActiveIndex(adsToShow.length);
       flatListRef.current?.scrollToIndex({ index: adsToShow.length, animated: false });
     } else if (newIndex === loopedAds.length - 1) {
-      // Scrolled to the cloned first item at the end
       setActiveIndex(1);
       flatListRef.current?.scrollToIndex({ index: 1, animated: false });
     } else {
@@ -94,15 +105,23 @@ export default function AdvertisementBanner() {
     }
   };
 
-  const renderItem = ({ item }: { item: typeof adsToShow[0] }) => (
+  const renderItem = ({ item }: { item: Ad }) => (
     <TouchableOpacity
       onPress={() => handlePress(item.link)}
       activeOpacity={0.9}
       style={{ width: adItemWidth }}
     >
-      <Image source={{ uri: item.image }} style={styles.adImage} />
+      <Image source={{ uri: item.image_url }} style={styles.adImage} />
     </TouchableOpacity>
   );
+
+  if (loading) {
+    return <ActivityIndicator size="large" color="#1e90ff" style={{ marginVertical: 16 }} />;
+  }
+
+  if (adsToShow.length === 0) {
+    return null; // no ads to show
+  }
 
   return (
     <View style={styles.container}>
@@ -119,9 +138,9 @@ export default function AdvertisementBanner() {
         onScrollEndDrag={startAutoScroll}
         initialScrollIndex={1}
         getItemLayout={(_, index) => ({
-            length: adItemWidth,
-            offset: adItemWidth * index,
-            index,
+          length: adItemWidth,
+          offset: adItemWidth * index,
+          index,
         })}
         style={styles.adBox}
       />
