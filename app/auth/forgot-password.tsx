@@ -29,7 +29,7 @@ export default function ForgotPasswordScreen() {
       return false;
     }
     if (!/\S+@\S+\.\S+/.test(email)) {
-      setError('Please enter a valid email address');
+      setError('Please enter a valid email');
       return false;
     }
     return true;
@@ -49,13 +49,8 @@ export default function ForgotPasswordScreen() {
 
       Alert.alert(
         'Reset Link Sent',
-        'Please check your email for password reset instructions.',
-        [
-          {
-            text: 'OK',
-            onPress: () => router.back(),
-          },
-        ]
+        'Please check your email to reset your password.',
+        [{ text: 'OK', onPress: () => router.back() }]
       );
     } catch (error: any) {
       Alert.alert('Error', error.message);
@@ -75,25 +70,28 @@ export default function ForgotPasswordScreen() {
         colors={[theme.colors.primary, theme.colors.secondary]}
         style={styles.gradient}
       >
-        <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
+        <ScrollView showsVerticalScrollIndicator={false}>
           <View style={styles.content}>
+
+            {/* Header */}
             <View style={styles.header}>
-              <Text style={styles.title}>Forgot Password?</Text>
+              <Text style={styles.title}>Forgot Password</Text>
               <Text style={styles.subtitle}>
-                Enter your email address and we'll send you a link to reset your password
+                Enter your email and we'll send you a reset link
               </Text>
             </View>
 
+            {/* Form Card */}
             <Card style={styles.formCard}>
               <Input
-                label="Email Address"
+                label="Email"
+                leftIcon="mail"
                 value={email}
                 onChangeText={updateEmail}
-                error={error}
-                leftIcon="mail"
-                placeholder="your@email.com"
+                placeholder="example@mail.com"
                 keyboardType="email-address"
                 autoCapitalize="none"
+                error={error}
               />
 
               <Button
@@ -107,17 +105,19 @@ export default function ForgotPasswordScreen() {
                 title="Back to Sign In"
                 onPress={() => router.back()}
                 variant="ghost"
-                style={styles.backToSignInButton}
+                style={styles.backToSignIn}
               />
             </Card>
 
+            {/* Back Button */}
             <Button
               title="← Back"
               onPress={() => router.back()}
               variant="ghost"
-              style={styles.backButton}
               textStyle={styles.backText}
+              style={{ marginTop: 10 }}
             />
+
           </View>
         </ScrollView>
       </LinearGradient>
@@ -126,49 +126,50 @@ export default function ForgotPasswordScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  gradient: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
+  container: { flex: 1 },
+  gradient: { flex: 1 },
+
   content: {
     paddingHorizontal: theme.spacing.xl,
     paddingTop: theme.spacing.xxl * 2,
     paddingBottom: theme.spacing.xl,
   },
+
+  // Header
   header: {
     alignItems: 'center',
-    marginBottom: theme.spacing.xl,
+    marginBottom: 30,
   },
   title: {
-    ...theme.typography.heading1,
+    fontSize: 32,
+    fontWeight: '700',
     color: '#fff',
-    marginBottom: theme.spacing.md,
-    textAlign: 'center',
+    marginBottom: 8,
   },
   subtitle: {
-    ...theme.typography.body,
-    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.85)',
     textAlign: 'center',
-    lineHeight: 24,
+    lineHeight: 22,
+    maxWidth: 280,
   },
+
+  // Form Card
   formCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    marginBottom: theme.spacing.lg,
+    backgroundColor: 'rgba(255,255,255,0.97)',
+    borderRadius: 16,
+    paddingVertical: 22,
+    paddingHorizontal: 18,
+    marginBottom: 15,
   },
+
   resetButton: {
-    marginTop: theme.spacing.md,
+    marginTop: 18,
   },
-  backToSignInButton: {
-    marginTop: theme.spacing.sm,
+  backToSignIn: {
+    marginTop: 10,
   },
-  backButton: {
-    alignSelf: 'flex-start',
-  },
+
   backText: {
     color: '#fff',
   },
