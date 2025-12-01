@@ -116,7 +116,7 @@ const WelcomeScreen: React.FC = () => {
           onPress={() => router.push("/auth/sign-in")}
           activeOpacity={0.8}
         >
-          <Text style={styles.secondaryText}>Already have an account? Sign In</Text>
+          <Text style={styles.secondaryText}>Log in</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
