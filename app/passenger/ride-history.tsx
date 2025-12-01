@@ -6,20 +6,27 @@ import {
   SafeAreaView,
   FlatList,
   ActivityIndicator,
+  TouchableOpacity,
+  LayoutAnimation,
 } from "react-native";
+import Ionicons from "react-native-vector-icons/Ionicons";
 import { useRouter } from "expo-router";
 import { useSession } from "../../contexts/AuthContext";
 import { supabase } from "../../lib/supabase";
 import { theme } from "../../utils/theme";
-import { Card } from "../../components/ui/Card";
 import { Ride } from "../../types";
 import { format } from "date-fns";
+import PassengerBottomNav from "../../components/BottomNavBar"; 
 
 export default function RideHistoryScreen() {
   const router = useRouter();
   const { user } = useSession();
   const [rides, setRides] = useState<Ride[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [filterStatus, setFilterStatus] = useState<"all" | "completed" | "cancelled">(
+    "all"
+  );
 
   useEffect(() => {
     const fetchRides = async () => {
@@ -54,29 +61,93 @@ export default function RideHistoryScreen() {
     }
   };
 
-  const renderItem = ({ item }: { item: Ride }) => (
-    <Card style={styles.rideCard}>
-      <View style={styles.rideHeader}>
-        <Text style={styles.rideDate}>
-          {format(new Date(item.created_at), "MMM dd, yyyy - p")}
-        </Text>
-        <Text style={styles.rideFare}>
-          ₹{item.fare_final || item.fare_estimate}
-        </Text>
-      </View>
-      <View style={styles.addressContainer}>
-        <Text style={styles.addressLabel}>From:</Text>
-        <Text style={styles.addressText}>{item.pickup_address}</Text>
-      </View>
-      <View style={styles.addressContainer}>
-        <Text style={styles.addressLabel}>To:</Text>
-        <Text style={styles.addressText}>{item.drop_address}</Text>
-      </View>
-      <Text style={[styles.status, { color: getStatusColor(item.status) }]}>
-        Status: {item.status}
-      </Text>
-    </Card>
-  );
+  const getFirstWord = (address: string) => {
+    if (!address) return "—";
+    const clean = address.trim().split(/[ ,]+/)[0];
+    return clean;
+  };
+
+  const filteredRides =
+    filterStatus === "all"
+      ? rides
+      : rides.filter((r) => r.status === filterStatus);
+
+  const completedCount = rides.filter((r) => r.status === "completed").length;
+  const cancelledCount = rides.filter((r) => r.status === "cancelled").length;
+
+  const renderItem = ({ item }: { item: Ride }) => {
+    const isExpanded = expandedId === item.id;
+    const date = item.created_at
+      ? format(new Date(item.created_at), "MMM dd, yyyy - p")
+      : "N/A";
+    const fare = item.fare_final ?? item.fare_estimate ?? "—";
+    const statusIcon =
+      item.status === "completed"
+        ? "checkmark-circle"
+        : item.status === "cancelled"
+        ? "close-circle"
+        : "time-outline";
+
+    return (
+      <TouchableOpacity
+        onPress={() => {
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+          setExpandedId(isExpanded ? null : item.id);
+        }}
+        style={styles.cardWrapper}
+        activeOpacity={0.9}
+      >
+        <View style={styles.cardHeader}>
+          <Text style={styles.dateText}>{date}</Text>
+          <Ionicons
+            name={statusIcon}
+            size={20}
+            color={getStatusColor(item.status)}
+          />
+        </View>
+
+        <View style={styles.routeRow}>
+          <Text style={styles.routeText}>
+            {getFirstWord(item.pickup_address)} → {getFirstWord(item.drop_address)}
+          </Text>
+          <Text style={styles.fareText}>₹{fare}</Text>
+        </View>
+
+        {isExpanded && (
+          <View style={styles.expandedContent}>
+            <Text style={styles.detailText}>
+              <Text style={styles.bold}>From: </Text>
+              {item.pickup_address}
+            </Text>
+            <Text style={styles.detailText}>
+              <Text style={styles.bold}>To: </Text>
+              {item.drop_address}
+            </Text>
+            <Text style={styles.detailText}>
+              <Text style={styles.bold}>Fare: </Text>₹{fare}
+            </Text>
+            <Text style={styles.detailText}>
+              <Text style={styles.bold}>Time: </Text>
+              {date}
+            </Text>
+            <Text style={styles.detailText}>
+              <Text style={styles.bold}>Driver: </Text>
+              {item.driver_name || "N/A"}
+            </Text>
+            <Text
+              style={[
+                styles.detailText,
+                { color: getStatusColor(item.status) },
+              ]}
+            >
+              <Text style={styles.bold}>Status: </Text>
+              {item.status}
+            </Text>
+          </View>
+        )}
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
@@ -91,13 +162,51 @@ export default function RideHistoryScreen() {
           <Text style={styles.emptyText}>No rides yet.</Text>
         </View>
       ) : (
-        <FlatList
-          data={rides}
-          renderItem={renderItem}
-          keyExtractor={(item) => item.id}
-          contentContainerStyle={styles.list}
-        />
+        <>
+          <View style={styles.summaryBox}>
+            <TouchableOpacity
+              style={styles.summaryItem}
+              onPress={() =>
+                setFilterStatus(filterStatus === "completed" ? "all" : "completed")
+              }
+            >
+              <Ionicons
+                name="checkmark-circle"
+                size={20}
+                color={theme.colors.success}
+              />
+              <Text style={styles.summaryText}>
+                Completed: {completedCount}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.summaryItem}
+              onPress={() =>
+                setFilterStatus(filterStatus === "cancelled" ? "all" : "cancelled")
+              }
+            >
+              <Ionicons
+                name="close-circle"
+                size={20}
+                color={theme.colors.error}
+              />
+              <Text style={styles.summaryText}>Cancelled: {cancelledCount}</Text>
+            </TouchableOpacity>
+          </View>
+
+          <FlatList
+            data={filteredRides}
+            renderItem={renderItem}
+            keyExtractor={(item) => item.id}
+            contentContainerStyle={styles.list}
+            showsVerticalScrollIndicator={false}
+          />
+        </>
       )}
+
+      {/* PASSENGER BOTTOM NAV */}
+      <PassengerBottomNav />
     </SafeAreaView>
   );
 }
@@ -107,40 +216,83 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: theme.colors.background,
   },
-  list: {
-    paddingHorizontal: theme.spacing.lg,
-    paddingVertical: theme.spacing.md,
-  },
-  rideCard: {
-    marginBottom: theme.spacing.md,
-  },
-  rideHeader: {
+  summaryBox: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    marginBottom: theme.spacing.md,
+    justifyContent: "space-around",
+    paddingVertical: theme.spacing.sm,
+    backgroundColor: "#fff",
+    marginHorizontal: theme.spacing.md,
+    marginTop: theme.spacing.md,
+    borderRadius: 12,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
   },
-  rideDate: {
-    ...theme.typography.bodySmall,
-    color: theme.colors.textSecondary,
+  summaryItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
   },
-  rideFare: {
-    ...theme.typography.heading3,
-    color: theme.colors.primary,
-  },
-  addressContainer: {
-    marginBottom: theme.spacing.xs,
-  },
-  addressLabel: {
-    ...theme.typography.caption,
-    color: theme.colors.textSecondary,
-  },
-  addressText: {
+  summaryText: {
     ...theme.typography.body,
     color: theme.colors.text,
+    fontWeight: "600",
   },
-  status: {
+  list: {
+    paddingHorizontal: theme.spacing.md,
+    paddingVertical: theme.spacing.md,
+  },
+  cardWrapper: {
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    marginBottom: theme.spacing.md,
+    padding: theme.spacing.md,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  cardHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  dateText: {
     ...theme.typography.bodySmall,
-    marginTop: theme.spacing.sm,
+    color: theme.colors.textSecondary,
+  },
+  routeRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+  },
+  routeText: {
+    ...theme.typography.body,
+    flex: 1,
+    color: theme.colors.text,
+    marginRight: 10,
+  },
+  fareText: {
+    ...theme.typography.heading3,
+    fontWeight: "bold",
+    color: theme.colors.primary,
+  },
+  expandedContent: {
+    marginTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: "#eee",
+    paddingTop: 8,
+  },
+  detailText: {
+    ...theme.typography.bodySmall,
+    color: theme.colors.text,
+    marginVertical: 2,
+  },
+  bold: {
     fontWeight: "bold",
   },
   emptyContainer: {
