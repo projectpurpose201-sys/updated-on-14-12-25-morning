@@ -1,168 +1,315 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
+  Text,
   StyleSheet,
+  SafeAreaView,
   TouchableOpacity,
-  Linking,
-  Dimensions,
-  Image,
-  FlatList,
-  NativeSyntheticEvent,
-  NativeScrollEvent,
+  ScrollView,
   ActivityIndicator,
+  StatusBar,
+  Platform,
 } from "react-native";
-import { supabase } from "../lib/supabase"; // adjust the path
+import { useRouter } from "expo-router";
+import { useSession } from "../../contexts/AuthContext";
+import { Ionicons } from "@expo/vector-icons";
+import { theme } from "../../utils/theme";
+import { supabase } from "../../lib/supabase";
+import PassengerBottomNav from "../../components/BottomNavBar";
+import { Card } from "../../components/ui/Card";
 
-interface Ad {
-  id: string;
-  title?: string;
-  image_url: string;
-  link: string;
-  active: boolean;
-}
+export default function DriverProfileScreen() {
+  const router = useRouter();
+  const { user, signOut } = useSession();
 
-export default function AdvertisementBanner() {
-  const [adsToShow, setAdsToShow] = useState<Ad[]>([]);
   const [loading, setLoading] = useState(true);
+  const [totalRides, setTotalRides] = useState(0);
+  const [totalEarnings, setTotalEarnings] = useState(0);
+  const [profile, setProfile] = useState<any>(null);
 
-  const flatListRef = useRef<FlatList | null>(null);
-  const { width } = Dimensions.get("window");
-  const adItemWidth = width - 32; // width - (marginHorizontal * 2)
-  
-  const [activeIndex, setActiveIndex] = useState(1);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  useEffect(() => {
+    fetchProfileAndStats();
+  }, []);
 
-  // Fetch ads from Supabase
-  const fetchAds = async () => {
+  const fetchProfileAndStats = async () => {
     try {
-      const { data, error } = await supabase
-        .from("ads")
+      const driverId = user?.id;
+      if (!driverId) return;
+
+      // Fetch profile
+      const { data: profileData } = await supabase
+        .from("profiles")
         .select("*")
-        .eq("active", true)
-        .order("created_at", { ascending: true });
+        .eq("id", driverId)
+        .single();
+      setProfile(profileData || {});
 
-      if (error) throw error;
+      // Fetch total rides
+      const { count } = await supabase
+        .from("rides")
+        .select("*", { count: "exact", head: true })
+        .eq("driver_id", driverId);
+      setTotalRides(count || 0);
 
-      if (data && data.length > 0) {
-        setAdsToShow(data as Ad[]);
-      }
-    } catch (error) {
-      console.error("Error fetching ads:", error);
+      // Fetch total earnings
+      const { data: earningsData } = await supabase
+        .from("rides")
+        .select("fare_estimate")
+        .eq("driver_id", driverId);
+      let total = 0;
+      earningsData?.forEach((item) => {
+        if (item?.fare_estimate) total += item.fare_estimate;
+      });
+      setTotalEarnings(total);
+    } catch (err) {
+      console.log("Stats ERROR:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    fetchAds();
-  }, []);
-
-  // Looping mechanism
-  const loopedAds = adsToShow.length > 0
-    ? [adsToShow[adsToShow.length - 1], ...adsToShow, adsToShow[0]]
-    : [];
-
-  const stopAutoScroll = useCallback(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-    }
-  }, []);
-
-  const startAutoScroll = useCallback(() => {
-    stopAutoScroll();
-    intervalRef.current = setInterval(() => {
-      flatListRef.current?.scrollToIndex({
-        index: activeIndex + 1,
-        animated: true,
-      });
-    }, 5000);
-  }, [activeIndex, stopAutoScroll]);
-
-  useEffect(() => {
-    if (adsToShow.length > 0) startAutoScroll();
-    return () => stopAutoScroll();
-  }, [adsToShow, startAutoScroll, stopAutoScroll]);
-
-  const onMomentumScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
-    const newIndex = Math.round(event.nativeEvent.contentOffset.x / adItemWidth);
-
-    if (newIndex === 0) {
-      setActiveIndex(adsToShow.length);
-      flatListRef.current?.scrollToIndex({ index: adsToShow.length, animated: false });
-    } else if (newIndex === loopedAds.length - 1) {
-      setActiveIndex(1);
-      flatListRef.current?.scrollToIndex({ index: 1, animated: false });
-    } else {
-      setActiveIndex(newIndex);
-    }
+  const getInitials = (name: string) => {
+    return (
+      name
+        ?.split(" ")
+        .map((word) => word[0])
+        .join("")
+        .toUpperCase()
+        .slice(0, 2) || "U"
+    );
   };
 
-  const handlePress = (link: string) => {
-    if (link) {
-      Linking.openURL(link).catch((err) =>
-        console.error("Failed to open URL:", err)
-      );
-    }
+  const handleLogout = () => {
+    signOut();
   };
-
-  const renderItem = ({ item }: { item: Ad }) => (
-    <TouchableOpacity
-      onPress={() => handlePress(item.link)}
-      activeOpacity={0.9}
-      style={{ width: adItemWidth }}
-    >
-      <Image source={{ uri: item.image_url }} style={styles.adImage} />
-    </TouchableOpacity>
-  );
-
-  if (loading) {
-    return <ActivityIndicator size="large" color="#1e90ff" style={{ marginVertical: 16 }} />;
-  }
-
-  if (adsToShow.length === 0) {
-    return null; // no ads to show
-  }
 
   return (
-    <View style={styles.container}>
-      <FlatList
-        ref={flatListRef}
-        data={loopedAds}
-        renderItem={renderItem}
-        keyExtractor={(item, index) => `${item.id}-${index}`}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={onMomentumScrollEnd}
-        onScrollBeginDrag={stopAutoScroll}
-        onScrollEndDrag={startAutoScroll}
-        initialScrollIndex={1}
-        getItemLayout={(_, index) => ({
-          length: adItemWidth,
-          offset: adItemWidth * index,
-          index,
-        })}
-        style={styles.adBox}
+    <SafeAreaView style={styles.container}>
+      <StatusBar
+        barStyle="dark-content"
+        backgroundColor={theme.colors.background}
       />
-    </View>
+
+      {/* HEADER */}
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={24} color={theme.colors.text} />
+        </TouchableOpacity>
+
+        <Text style={styles.headerTitle}>Driver Profile</Text>
+      </View>
+
+      {loading ? (
+        <View style={styles.loadingWrapper}>
+          <ActivityIndicator size="large" color={theme.colors.primary} />
+        </View>
+      ) : (
+        <ScrollView
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* PROFILE CARD */}
+          <Card style={styles.profileCard}>
+            <View style={styles.avatarContainer}>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>
+                  {getInitials(profile?.name || user?.name || "U")}
+                </Text>
+              </View>
+
+              {/* ✅ GREEN VERIFIED TICK */}
+              <View style={styles.verifiedTick}>
+                <Ionicons name="checkmark" size={16} color="#fff" />
+              </View>
+            </View>
+
+            <Text style={styles.name}>{profile?.name || user?.name}</Text>
+            <Text style={styles.email}>{profile?.email || user?.email}</Text>
+            {profile?.phone && (
+              <Text style={styles.extra}>📞 {profile.phone}</Text>
+            )}
+          </Card>
+
+          {/* STATS */}
+<View style={styles.statsContainer}>
+
+  {/* Rides Card → Opens Ride History */}
+  <TouchableOpacity
+    style={styles.statCard}
+    onPress={() => router.push("driver/earnings")}
+  >
+    <Ionicons
+      name="car-sport-outline"
+      size={28}
+      color={theme.colors.primary}
+    />
+    <Text style={styles.statValue}>{totalRides}</Text>
+    <Text style={styles.statLabel}>Rides</Text>
+  </TouchableOpacity>
+
+  {/* Rating Card → No Action */}
+  <View style={styles.statCard}>
+    <Ionicons name="star" size={28} color="#f4c430" />
+    <Text style={styles.statValue}>{profile?.rating_avg || "4.9"}</Text>
+    <Text style={styles.statLabel}>Rating</Text>
+  </View>
+
+  {/* Earnings Card → Opens Earnings Page */}
+  <TouchableOpacity
+    style={styles.statCard}
+    onPress={() => router.push("driver/earnings")}
+  >
+    <Ionicons
+      name="wallet-outline"
+      size={28}
+      color={theme.colors.success}
+    />
+    <Text style={styles.statValue}>₹{totalEarnings}</Text>
+    <Text style={styles.statLabel}>Earnings</Text>
+  </TouchableOpacity>
+
+</View>
+
+
+          {/* LOGOUT */}
+          <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
+            <Ionicons name="log-out-outline" size={22} color="#fff" />
+            <Text style={styles.logoutText}>Logout</Text>
+          </TouchableOpacity>
+        </ScrollView>
+      )}
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    height: 80,
-    marginVertical: 8,
+  container: { flex: 1, backgroundColor: theme.colors.background },
+
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    paddingTop:
+      Platform.OS === "android" ? StatusBar.currentHeight + 10 : 10,
+    paddingBottom: 10,
   },
-  adBox: {
-    marginHorizontal: 16,
+
+  backButton: {
+    padding: 8,
     borderRadius: 12,
-    overflow: "hidden",
-    backgroundColor: "#e0e0e0",
+    backgroundColor: `${theme.colors.text}08`,
   },
-  adImage: {
-    width: "100%",
-    height: "100%",
-    resizeMode: "cover",
+
+  headerTitle: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: theme.colors.text,
+    flex: 1,
+    textAlign: "center",
+    marginHorizontal: 10,
+  },
+
+  settingsButton: {
+    padding: 8,
     borderRadius: 12,
+    backgroundColor: `${theme.colors.text}08`,
   },
+
+  loadingWrapper: { flex: 1, justifyContent: "center", alignItems: "center" },
+
+  scrollContent: { paddingBottom: 100, paddingHorizontal: 20 },
+
+  profileCard: {
+    backgroundColor: "#fff",
+    paddingVertical: 25,
+    borderRadius: 20,
+    alignItems: "center",
+    marginBottom: 20,
+    elevation: 3,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+  },
+
+  avatarContainer: { marginBottom: 15, alignItems: "center" },
+
+  avatar: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: theme.colors.primary,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 4,
+    borderColor: `${theme.colors.primary}20`,
+  },
+
+  avatarText: { color: "#fff", fontSize: 32, fontWeight: "700" },
+
+  /* ✅ GREEN TICK STYLE */
+  verifiedTick: {
+    position: "absolute",
+    bottom: -5,
+    alignSelf: "center",
+    backgroundColor: "#28a745",
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: 3,
+    borderColor: "#fff",
+  },
+
+  name: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: theme.colors.text,
+    marginTop: 10,
+  },
+
+  email: { fontSize: 14, color: theme.colors.textSecondary, marginTop: 4 },
+
+  extra: { fontSize: 14, color: theme.colors.text, marginTop: 2 },
+
+  statsContainer: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginBottom: 30,
+  },
+
+  statCard: {
+    flex: 1,
+    backgroundColor: "#fff",
+    marginHorizontal: 5,
+    paddingVertical: 15,
+    borderRadius: 14,
+    alignItems: "center",
+    elevation: 2,
+    shadowColor: "#000",
+    shadowOpacity: 0.08,
+    shadowRadius: 4,
+  },
+
+  statValue: {
+    fontSize: 18,
+    fontWeight: "700",
+    marginTop: 6,
+    color: theme.colors.text,
+  },
+
+  statLabel: { fontSize: 12, color: theme.colors.textSecondary },
+
+  logoutButton: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: theme.colors.error,
+    paddingVertical: 13,
+    borderRadius: 12,
+    marginBottom: 20,
+  },
+
+  logoutText: { color: "#fff", fontSize: 16, fontWeight: "600", marginLeft: 8 },
 });
