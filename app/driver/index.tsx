@@ -754,42 +754,6 @@ if (initialLoading) {
 </View>
 
 )}
-<View style={styles.row}>
-            <Card style={styles.statCard}>
-              <Text style={styles.statValue}>₹{todayEarnings}</Text>
-              <Text>Today's Earnings</Text>
-            </Card>
-
-            <Card style={styles.statCard}>
-              <Text style={styles.statValue}>{totalRides}</Text>
-              <Text>Rides Completed</Text>
-            </Card>
-          </View>
-          <View style={styles.quickActions}>
-            <TouchableOpacity
-              style={styles.actionCard}
-              onPress={() => router.push("/driver/earnings")}
-            >
-              <Ionicons
-                name="wallet-outline"
-                size={24}
-                color={theme.colors.primary}
-              />
-              <Text style={styles.actionText}>Earnings</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={styles.actionCard}
-              onPress={() => router.push("/driver/profile")}
-            >
-              <Ionicons
-                name="person-outline"
-                size={24}
-                color={theme.colors.primary}
-              />
-              <Text style={styles.actionText}>Profile</Text>
-            </TouchableOpacity>
-          </View>
         </>
       )}
     </>
@@ -806,10 +770,6 @@ if (initialLoading) {
         <TouchableOpacity style={styles.footerTab} onPress={() => router.push("/driver/earnings")}>
           <Ionicons name="car-outline" size={24} />
           <Text>Rides</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.footerTab} onPress={() => router.push("/driver/wallet")}>
-          <Ionicons name="wallet-outline" size={24} />
-          <Text>Wallet</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.footerTab} onPress={() => router.push("/driver/profile")}>
           <Ionicons name="person-outline" size={24} />
