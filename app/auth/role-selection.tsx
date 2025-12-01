@@ -11,10 +11,7 @@ export default function RoleSelectionScreen() {
   const router = useRouter();
 
   const handleRoleSelect = (role: 'passenger' | 'driver') => {
-    router.push({
-      pathname: '/auth/sign-up',
-      params: { role },
-    });
+    router.push({ pathname: '/auth/sign-up', params: { role } });
   };
 
   return (
@@ -24,63 +21,69 @@ export default function RoleSelectionScreen() {
         style={styles.gradient}
       >
         <View style={styles.content}>
+
+          {/* Header */}
           <View style={styles.header}>
             <Text style={styles.title}>Choose Your Role</Text>
             <Text style={styles.subtitle}>
-              How would you like to use Vaniyambadi Ride?
+              Select how you want to use the app
             </Text>
           </View>
 
-          <View style={styles.cardContainer}>
+          {/* Role Cards */}
+          <View style={styles.cardsWrapper}>
+            
+            {/* Passenger */}
             <Card style={styles.roleCard}>
               <View style={styles.cardContent}>
-                <Ionicons
-                  name="person"
-                  size={48}
-                  color={theme.colors.primary}
-                  style={styles.icon}
-                />
+                <View style={styles.iconCircle}>
+                  <Ionicons name="person" size={42} color="#fff" />
+                </View>
+
                 <Text style={styles.cardTitle}>Passenger</Text>
                 <Text style={styles.cardDescription}>
-                  Book rides and travel around Vaniyambadi with ease
+                  Book auto rides quickly and easily
                 </Text>
+
                 <Button
                   title="Continue as Passenger"
                   onPress={() => handleRoleSelect('passenger')}
                   variant="primary"
-                  style={styles.roleButton}
+                  style={styles.button}
                 />
               </View>
             </Card>
 
+            {/* Driver */}
             <Card style={styles.roleCard}>
               <View style={styles.cardContent}>
-                <Ionicons
-                  name="car"
-                  size={48}
-                  color={theme.colors.secondary}
-                  style={styles.icon}
-                />
+                <View style={[styles.iconCircle, { backgroundColor: theme.colors.secondary }]}>
+                  <Ionicons name="car" size={42} color="#fff" />
+                </View>
+
                 <Text style={styles.cardTitle}>Driver</Text>
                 <Text style={styles.cardDescription}>
-                  Earn money by providing rides to passengers
+                  Accept rides and earn money
                 </Text>
+
                 <Button
                   title="Continue as Driver"
                   onPress={() => handleRoleSelect('driver')}
                   variant="secondary"
-                  style={styles.roleButton}
+                  style={styles.button}
                 />
               </View>
             </Card>
+
           </View>
 
+          {/* Back */}
           <Button
             title="← Back"
             onPress={() => router.back()}
             variant="ghost"
-            style={styles.backButton}
-            textStyle={styles.backText}
+            textStyle={{ color: '#fff' }}
+            style={{ marginBottom: 30 }}
           />
         </View>
       </LinearGradient>
@@ -89,64 +92,64 @@ export default function RoleSelectionScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  gradient: {
-    flex: 1,
-  },
+  container: { flex: 1 },
+  gradient: { flex: 1 },
   content: {
     flex: 1,
-    paddingHorizontal: theme.spacing.xl,
+    padding: 24,
     justifyContent: 'space-between',
   },
+
+  // Header
   header: {
+    marginTop: 40,
     alignItems: 'center',
-    marginTop: theme.spacing.xxl * 2,
   },
   title: {
-    ...theme.typography.heading1,
+    fontSize: 30,
+    fontWeight: '700',
     color: '#fff',
-    marginBottom: theme.spacing.md,
-    textAlign: 'center',
+    marginBottom: 8,
   },
   subtitle: {
-    ...theme.typography.body,
-    color: 'rgba(255, 255, 255, 0.8)',
+    fontSize: 16,
+    color: 'rgba(255,255,255,0.85)',
     textAlign: 'center',
-    marginBottom: theme.spacing.lg,
   },
-  cardContainer: {
-    gap: theme.spacing.lg,
-  },
+
+  // Cards
+  cardsWrapper: { gap: 18 },
   roleCard: {
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 18,
+    paddingVertical: 20,
+    paddingHorizontal: 16,
   },
   cardContent: {
     alignItems: 'center',
+    gap: 12,
   },
-  icon: {
-    marginBottom: theme.spacing.md,
+
+  iconCircle: {
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: theme.colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
   },
+
   cardTitle: {
-    ...theme.typography.heading3,
+    fontSize: 20,
+    fontWeight: '700',
     color: theme.colors.text,
-    marginBottom: theme.spacing.sm,
   },
   cardDescription: {
-    ...theme.typography.bodySmall,
+    fontSize: 14,
     color: theme.colors.textSecondary,
     textAlign: 'center',
-    marginBottom: theme.spacing.lg,
   },
-  roleButton: {
-    width: '100%',
-  },
-  backButton: {
-    alignSelf: 'flex-start',
-    paddingBottom: theme.spacing.xl,
-  },
-  backText: {
-    color: '#fff',
-  },
+
+  button: { width: '100%', marginTop: 10 },
 });
